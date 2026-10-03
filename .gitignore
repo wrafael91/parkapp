@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment variables (secrets)
+.env
+.env.*
+!.env.example
+
+# Build and test output
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
