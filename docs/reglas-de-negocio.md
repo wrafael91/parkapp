@@ -1,10 +1,10 @@
-# Reglas de negocio — v1
+# Reglas de negocio
 
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3) |
-| Versión | 1.0 — 4 de octubre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#N) |
+| Versión | 1.1 — 6 de octubre de 2026 |
 
 ## 1. Propósito
 
@@ -70,7 +70,7 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 | ID | Regla | Fuente |
 |---|---|---|
 | BR-09 | La tarifa por minuto se configura por tipo de vehículo, con IVA incluido. | Decreto 652/2025, art. 200, par. 1 |
-| BR-10 | El sistema rechaza una tarifa mayor al tope legal vigente. El tope se guarda como valor configurable por tipo de vehículo, porque cambia cada año. | Decreto 652/2025, art. 200, par. 1 |
+| BR-10 | El sistema rechaza una tarifa mayor al tope legal vigente para su tipo de vehículo (ver BR-15). | Decreto 652/2025, art. 200, par. 1 |
 | BR-11 | Cada estadía se cobra con la tarifa vigente al momento del ingreso, guardada en el registro de la estadía. Las tarifas no se editan: un cambio crea una versión nueva. | Decisión de diseño |
 
 ### 4.4 Integridad y trazabilidad
@@ -79,12 +79,14 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 |---|---|---|
 | BR-12 | Ningún registro de ingreso, salida o cobro se borra. Un registro equivocado se anula indicando motivo, usuario y fecha. | Decisión de diseño |
 | BR-13 | La pérdida del tiquete no genera recargo. La salida se busca por placa y aplica BR-04. Verificar los documentos del propietario es un procedimiento del operador, fuera del sistema. | Decisión de diseño |
+| BR-16 | Las fechas y horas de ingreso, salida y anulación las asigna el servidor. El sistema no acepta horas enviadas por el cliente. | Decisión de diseño (prevención de fraude) |
 
 ### 4.5 Comprobante de pago
 
 | ID | Regla | Fuente |
 |---|---|---|
 | BR-14 | El comprobante muestra placa, fecha y hora de ingreso y salida, minutos cobrados, tarifa por minuto aplicada, ajuste por redondeo y total con IVA incluido. | Decreto 652/2025, art. 200, par. 1 |
+| BR-15 | El tope legal por tipo de vehículo y la condición de Sello Oro no se editan desde la aplicación. Los mantiene la plataforma mediante una migración versionada en el repositorio, cuyo commit cita el decreto que la origina. El administrador solo configura la tarifa del parqueadero, que no puede superar el tope. | Decreto 652/2025, art. 200, par. 1; segregación de funciones |
 
 ## 5. Ejemplos de cálculo
 
@@ -147,3 +149,10 @@ Distrital No. 8507. https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i
 Concejo de Bogotá. (2008). *Acuerdo 356 de 2008, por medio del cual se adoptan
 medidas para el cobro de estacionamiento de vehículos fuera de vía*.
 https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=34306
+
+## 10. Historial de cambios
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 1.0 | 4 de octubre de 2026 | Versión inicial |
+| 1.1 | 6 de octubre de 2026 | Se agregan BR-15 (tope legal fuera del alcance del administrador) y BR-16 (horas asignadas por el servidor); se ajusta BR-10 |
