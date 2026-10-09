@@ -167,7 +167,162 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 
 ## 4. Historias de usuario
 
-Pendiente.
+Formato: "Como… quiero… para…", con criterios de aceptación "Dado… cuando…
+entonces…". Priorización MoSCoW: las historias Must se desarrollan en el
+Sprint 2 (objetivo específico 2) y las Should en el Sprint 3. Los elementos de
+la sección 7 de las reglas de negocio son Won't en esta versión.
+
+### 4.1 Resumen
+
+| ID | Historia | Requisitos | Prioridad | Sprint |
+|---|---|---|---|---|
+| US-01 | Iniciar y cerrar sesión | FR-01, FR-02 | Must | 2 |
+| US-02 | Crear cuentas de operador | FR-03 | Must | 2 |
+| US-03 | Desactivar y reactivar cuentas | FR-04 | Must | 2 |
+| US-04 | Restablecer la contraseña de un operador | FR-05 | Should | 3 |
+| US-05 | Cambiar mi contraseña | FR-06 | Should | 3 |
+| US-06 | Registrar el ingreso de un vehículo | FR-07, FR-08, FR-09 | Must | 2 |
+| US-07 | Ver los vehículos que están dentro y buscar por placa | FR-10, FR-11 | Must | 2 |
+| US-08 | Registrar la salida y calcular el cobro | FR-12, FR-13 | Must | 2 |
+| US-09 | Emitir el comprobante de pago | FR-14 | Must | 2 |
+| US-10 | Anular una estadía | FR-15 | Must | 2 |
+| US-11 | Configurar la tarifa por minuto | FR-16 | Must | 2 |
+| US-12 | Configurar el periodo de gracia | FR-17 | Must | 2 |
+| US-13 | Consultar el historial | FR-18 | Should | 3 |
+| US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
+| US-15 | Ver el resumen de recaudo | FR-20 | Should | 3 |
+
+### 4.2 Historias y criterios de aceptación
+
+#### US-01 Iniciar y cerrar sesión
+
+**Como** operador o administrador, **quiero** iniciar y cerrar sesión **para**
+que solo yo pueda actuar con mi cuenta.
+
+- **Dado** una cuenta activa, **cuando** ingreso el correo y la contraseña correctos, **entonces** accedo a las funciones de mi rol.
+- **Dado** una cuenta desactivada, **cuando** intento iniciar sesión, **entonces** el acceso se rechaza con el mismo mensaje que una contraseña incorrecta, para no revelar qué cuentas existen.
+- **Dado** 5 intentos fallidos en 15 minutos, **cuando** intento de nuevo, **entonces** la cuenta queda bloqueada durante 15 minutos (NFR-03).
+- **Dado** que cerré sesión, **cuando** se reutiliza la sesión anterior, **entonces** la API responde 401.
+
+#### US-02 Crear cuentas de operador
+
+**Como** administrador, **quiero** crear cuentas de operador **para** que cada
+persona opere con su propia identidad.
+
+- **Dado** un correo no registrado y una contraseña válida, **cuando** creo la cuenta, **entonces** el operador puede iniciar sesión.
+- **Dado** una contraseña de menos de 15 caracteres o que está en la lista de contraseñas filtradas, **cuando** creo la cuenta, **entonces** se rechaza (NFR-02).
+- **Dado** que soy operador, **cuando** intento crear una cuenta, **entonces** la API responde 403.
+
+#### US-03 Desactivar y reactivar cuentas
+
+**Como** administrador, **quiero** desactivar la cuenta de un operador **para**
+cortar su acceso sin perder el rastro de sus registros.
+
+- **Dado** un operador con sesión abierta, **cuando** desactivo su cuenta, **entonces** su siguiente petición responde 401 (NFR-04).
+- **Dado** una cuenta desactivada, **cuando** se consultan sus registros, **entonces** la cuenta y sus registros se conservan.
+- **Dado** una cuenta desactivada, **cuando** la reactivo, **entonces** el operador puede volver a iniciar sesión.
+
+#### US-04 Restablecer la contraseña de un operador
+
+**Como** administrador, **quiero** restablecer la contraseña de un operador
+**para** que recupere el acceso si la olvida.
+
+- **Dado** un operador, **cuando** restablezco su contraseña, **entonces** sus sesiones abiertas se invalidan y el evento queda en la bitácora.
+- **Dado** que soy operador, **cuando** intento restablecer la contraseña de otro usuario, **entonces** la API responde 403.
+
+#### US-05 Cambiar mi contraseña
+
+**Como** usuario, **quiero** cambiar mi contraseña **para** mantener mi cuenta segura.
+
+- **Dado** que ingreso mi contraseña actual y una nueva válida, **cuando** confirmo, **entonces** la contraseña cambia.
+- **Dado** que la contraseña actual es incorrecta, **cuando** confirmo, **entonces** el cambio se rechaza.
+
+#### US-06 Registrar el ingreso de un vehículo
+
+**Como** operador, **quiero** registrar el ingreso de un vehículo **para** que
+su estadía se cuente desde ese momento.
+
+- **Dado** una placa sin estadía activa, **cuando** registro placa, tipo y color, **entonces** se crea la estadía con la hora del servidor y mi usuario.
+- **Dado** que escribo `abc-123`, **cuando** registro el ingreso, **entonces** la placa se guarda como `ABC123`.
+- **Dado** una placa con formato inválido para su tipo de vehículo, **cuando** registro el ingreso, **entonces** se rechaza.
+- **Dado** una placa con estadía activa, **cuando** intento registrar su ingreso, **entonces** se rechaza con una alerta de posible placa clonada (BR-03).
+- **Dado** que la petición incluye una hora de ingreso, **cuando** se registra, **entonces** el sistema la ignora y usa la del servidor (BR-16).
+
+#### US-07 Ver los vehículos que están dentro y buscar por placa
+
+**Como** operador, **quiero** ver los vehículos que están dentro y buscarlos
+por placa **para** encontrar rápido la estadía al momento de la salida.
+
+- **Dado** varias estadías activas, **cuando** abro la lista, **entonces** veo placa, tipo, color y hora de ingreso de cada una.
+- **Dado** que busco `abc123`, **cuando** existe una estadía activa de `ABC123`, **entonces** aparece como resultado.
+
+#### US-08 Registrar la salida y calcular el cobro
+
+**Como** operador, **quiero** registrar la salida y que el sistema calcule el
+cobro **para** no hacer cálculos a mano.
+
+- **Dado** una estadía activa, **cuando** inicio la salida, **entonces** veo los datos del ingreso para verificarlos antes de confirmar (BR-04).
+- **Dado** un carro con tarifa de $230 y gracia de 5 minutos que estuvo 37 min 50 s, **cuando** confirmo la salida, **entonces** el cobro es $8.500 (caso 4 de las reglas de negocio).
+- **Dado** una moto que estuvo 3 minutos, **cuando** confirmo la salida, **entonces** el cobro es $0 (caso 1).
+- **Dado** que la tarifa cambió mientras el vehículo estaba dentro, **cuando** confirmo la salida, **entonces** se cobra con la tarifa vigente al ingreso (BR-11).
+
+#### US-09 Emitir el comprobante de pago
+
+**Como** operador, **quiero** entregar un comprobante **para** que el cliente
+tenga constancia de lo que pagó.
+
+- **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra placa, ingreso, salida, minutos cobrados, tarifa aplicada, ajuste por redondeo y total (BR-14).
+- **Dado** un comprobante en pantalla, **cuando** lo imprimo desde el navegador, **entonces** sale completo en una página.
+
+#### US-10 Anular una estadía
+
+**Como** administrador, **quiero** anular una estadía registrada por error
+**para** corregirla sin borrar evidencia.
+
+- **Dado** una estadía, **cuando** la anulo con un motivo, **entonces** queda anulada con mi usuario y la hora del servidor, y se conserva en el historial.
+- **Dado** que no escribo un motivo, **cuando** intento anular, **entonces** se rechaza.
+- **Dado** que soy operador, **cuando** intento anular, **entonces** la API responde 403 (sección 1.3).
+
+#### US-11 Configurar la tarifa por minuto
+
+**Como** administrador, **quiero** configurar la tarifa por minuto de cada tipo
+de vehículo **para** fijar el precio de mi parqueadero dentro de la ley.
+
+- **Dado** un tope de $230 para carro, **cuando** configuro $200, **entonces** se crea una versión nueva, vigente desde ese momento.
+- **Dado** un tope de $230 para carro, **cuando** configuro $250, **entonces** se rechaza indicando el tope vigente (BR-10).
+- **Dado** una tarifa anterior, **cuando** creo una nueva, **entonces** la anterior se conserva sin cambios (BR-11).
+
+#### US-12 Configurar el periodo de gracia
+
+**Como** administrador, **quiero** configurar el periodo de gracia **para**
+no cobrar a quienes salen en pocos minutos.
+
+- **Dado** una gracia de 5 minutos, **cuando** la cambio a 10, **entonces** se crea una versión nueva que solo aplica a los ingresos posteriores (BR-11).
+- **Dado** un valor negativo o no entero, **cuando** lo guardo, **entonces** se rechaza.
+
+#### US-13 Consultar el historial
+
+**Como** administrador, **quiero** consultar el historial de estadías y
+comprobantes **para** revisar la operación.
+
+- **Dado** estadías de varios días, **cuando** filtro por fechas, placa, operador o estado, **entonces** veo solo las que cumplen el filtro.
+- **Dado** 100.000 estadías registradas, **cuando** filtro, **entonces** el resultado llega en menos de 2 segundos (NFR-14).
+
+#### US-14 Consultar la bitácora de auditoría
+
+**Como** administrador, **quiero** consultar la bitácora **para** saber quién
+hizo qué y cuándo.
+
+- **Dado** eventos registrados, **cuando** consulto la bitácora, **entonces** veo el usuario, la acción, la fecha y la IP de cada uno.
+- **Dado** cualquier usuario, **cuando** intenta modificar o borrar un evento, **entonces** no es posible (NFR-12).
+
+#### US-15 Ver el resumen de recaudo
+
+**Como** administrador, **quiero** ver el recaudo por día y por operador **para**
+cuadrar caja con lo que entrega cada operador.
+
+- **Dado** comprobantes de varios operadores en un día, **cuando** abro el resumen, **entonces** veo el total por operador y el total del día.
+- **Dado** un comprobante anulado, **cuando** se calcula el resumen, **entonces** no se suma.
 
 ## 5. Matriz de trazabilidad
 
