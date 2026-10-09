@@ -108,7 +108,62 @@ automatizada en la que la API responde 403.
 
 ## 3. Requisitos no funcionales
 
-Pendiente.
+Las categorías siguen el modelo de calidad ISO/IEC 25010. Cada requisito tiene
+una meta medible y una forma de verificarla. Los de desempeño y fiabilidad se
+evalúan en el Sprint 3, como parte del objetivo específico 4.
+
+### 3.1 Seguridad
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-01 | Las contraseñas se almacenan con un algoritmo de hash adaptativo con sal (Argon2id o bcrypt). Nunca se guardan en texto plano ni de forma reversible. | Revisión de código y prueba automatizada | 2 |
+| NFR-02 | Las contraseñas tienen mínimo 15 caracteres y se aceptan hasta 64, sin reglas de composición. Se rechazan las que aparecen en una lista de contraseñas comunes o filtradas, y no se exige cambio periódico (NIST SP 800-63B-4). | Pruebas automatizadas | 2 |
+| NFR-03 | Tras 5 intentos fallidos de inicio de sesión en 15 minutos, la cuenta se bloquea durante 15 minutos. Cada intento fallido queda en la bitácora (FR-19). | Prueba automatizada | 2 |
+| NFR-04 | La sesión expira tras 30 minutos de inactividad y, como máximo, a las 12 horas. Cerrar sesión o desactivar una cuenta invalida sus sesiones de inmediato. | Prueba automatizada | 2 |
+| NFR-05 | Cada petición a la API verifica el rol en el servidor según la matriz de la sección 1.2. Una acción no permitida responde 403 y queda en la bitácora. | Una prueba automatizada por cada ✗ de la matriz | 2 |
+| NFR-06 | Toda entrada se valida en el servidor contra un esquema (tipo, formato y longitud), y el acceso a datos usa consultas parametrizadas. | Pruebas automatizadas con entradas inválidas | 2 |
+| NFR-07 | Los errores no exponen detalles internos al cliente (trazas, consultas SQL, versiones). El detalle queda solo en los registros del servidor. | Pruebas automatizadas | 2 |
+| NFR-08 | La API limita las peticiones por cliente (100 por minuto por IP en general, con un límite más estricto en el inicio de sesión) y responde 429 al superarlo. | Prueba automatizada | 2 |
+| NFR-09 | La comunicación usa exclusivamente HTTPS (TLS 1.2 o superior), y la base de datos y sus respaldos están cifrados en reposo. | Revisión de configuración y escaneo TLS | 3 |
+| NFR-10 | Ningún secreto (contraseñas, llaves o tokens) está en el repositorio. En AWS, los secretos se gestionan con un servicio de secretos, y GitHub tiene activado el escaneo de secretos. | Escaneo de secretos y revisión | 1 a 3 |
+| NFR-11 | Al cierre de cada sprint, las dependencias no tienen vulnerabilidades conocidas de severidad alta o crítica. | npm audit y Dependabot | 1 a 3 |
+| NFR-12 | La bitácora de auditoría es de solo inserción: nadie puede modificarla ni borrarla desde la aplicación. Cada evento registra quién, qué, cuándo y desde qué IP. | Pruebas de integridad en la base de datos | 1 |
+
+### 3.2 Eficiencia de desempeño
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-13 | El registro de ingreso y el de salida responden en menos de 500 ms en el percentil 95, con 20 usuarios concurrentes. | Prueba de carga en AWS | 3 |
+| NFR-14 | La consulta del historial con filtros responde en menos de 2 s en el percentil 95, con 100.000 estadías registradas (cerca de un año de un parqueadero con 300 vehículos diarios). | Prueba de carga con datos sintéticos | 3 |
+| NFR-15 | Bajo la carga de NFR-13, la tasa de errores es menor al 1 %. | Prueba de carga | 3 |
+
+### 3.3 Fiabilidad
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-16 | La disponibilidad mensual es de al menos 99 % (unas 7 horas de caída al mes como máximo). | Monitoreo de disponibilidad durante el periodo de evaluación | 3 |
+| NFR-17 | Si el proceso de la API falla, se reinicia automáticamente en menos de 1 minuto. | Detener el proceso y medir la recuperación | 3 |
+| NFR-18 | La base de datos tiene respaldos automáticos diarios, con retención de 7 días y recuperación a un punto en el tiempo. Una restauración completa toma menos de 2 horas. | Simulacro de restauración documentado | 3 |
+
+### 3.4 Mantenibilidad
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-19 | Todo cambio entra a `main` por pull request con la integración continua en verde. | Protección de rama | 1 a 3 |
+| NFR-20 | Cada ejemplo de la sección 5 de las reglas de negocio es una prueba automatizada, y la lógica de negocio tiene al menos 80 % de cobertura de líneas. | Reporte de cobertura en CI | 2 |
+
+### 3.5 Usabilidad
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-21 | Un operador registra un ingreso desde una sola pantalla, sin recargar la página, en menos de 15 segundos. | Prueba con 3 usuarios | 3 |
+| NFR-22 | La interfaz funciona en las dos últimas versiones de Chrome, Edge y Firefox, en pantallas desde 1024 px de ancho. | Prueba manual | 2 |
+
+### 3.6 Costo
+
+| ID | Requisito | Verificación | Sprint |
+|---|---|---|---|
+| NFR-23 | El costo mensual de la infraestructura en AWS no supera USD 30. AWS Budgets alerta al 80 % y ejecuta una acción automática al 100 %. | Reportes de AWS Budgets | 3 |
 
 ## 4. Historias de usuario
 
