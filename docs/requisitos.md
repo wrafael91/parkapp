@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-03 (#4) |
-| Versión | 0.1 — 6 de octubre de 2026 (en construcción) |
+| Versión | 1.0 — 8 de octubre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -108,8 +108,9 @@ automatizada en la que la API responde 403.
 
 ## 3. Requisitos no funcionales
 
-Las categorías siguen el modelo de calidad ISO/IEC 25010. Cada requisito tiene
-una meta medible y una forma de verificarla. Los de desempeño y fiabilidad se
+Las categorías siguen el modelo de calidad ISO/IEC 25010:2023; la de costo se
+agrega por la restricción de presupuesto del proyecto. Cada requisito tiene una
+meta medible y una forma de verificarla. Los de desempeño y fiabilidad se
 evalúan en el Sprint 3, como parte del objetivo específico 4.
 
 ### 3.1 Seguridad
@@ -152,7 +153,7 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 | NFR-19 | Todo cambio entra a `main` por pull request con la integración continua en verde. | Protección de rama | 1 a 3 |
 | NFR-20 | Cada ejemplo de la sección 5 de las reglas de negocio es una prueba automatizada, y la lógica de negocio tiene al menos 80 % de cobertura de líneas. | Reporte de cobertura en CI | 2 |
 
-### 3.5 Usabilidad
+### 3.5 Capacidad de interacción
 
 | ID | Requisito | Verificación | Sprint |
 |---|---|---|---|
@@ -326,4 +327,55 @@ cuadrar caja con lo que entrega cada operador.
 
 ## 5. Matriz de trazabilidad
 
-Pendiente.
+### 5.1 Objetivos específicos
+
+| Objetivo específico | Se cumple con | Requisitos relacionados |
+|---|---|---|
+| OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos, arquitectura y modelo de amenazas (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
+| OE2. Desarrollar los módulos de registro y facturación | Historias Must (Sprint 2) y Should (Sprint 3) | FR-01 a FR-20; NFR-01 a NFR-08, NFR-20 |
+| OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 3) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
+| OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad y restauración (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
+
+### 5.2 Requisitos funcionales
+
+| Requisito | Origen | Historia |
+|---|---|---|
+| FR-01 | Sección 1.3 | US-01 |
+| FR-02 | — | US-01 |
+| FR-03 | Sección 1.3 | US-02 |
+| FR-04 | Sección 1.3, BR-12 | US-03 |
+| FR-05 | Sección 1.3 | US-04 |
+| FR-06 | Sección 1.3 | US-05 |
+| FR-07 | BR-01, BR-02, BR-16 | US-06 |
+| FR-08 | BR-02 | US-06 |
+| FR-09 | BR-03 | US-06 |
+| FR-10 | — | US-07 |
+| FR-11 | BR-13 | US-07 |
+| FR-12 | BR-04 | US-08 |
+| FR-13 | BR-05, BR-06, BR-07, BR-08, BR-11, BR-16 | US-08 |
+| FR-14 | BR-14 | US-09 |
+| FR-15 | BR-12, BR-16 | US-10 |
+| FR-16 | BR-09, BR-10, BR-11, BR-15 | US-11 |
+| FR-17 | BR-08, BR-11 | US-12 |
+| FR-18 | BR-12 | US-13 |
+| FR-19 | BR-12 | US-14 |
+| FR-20 | Sección 1.3 | US-15 |
+
+Cobertura: las 16 reglas de negocio (BR-01 a BR-16) aparecen en al menos un
+requisito funcional, y los 20 requisitos funcionales tienen al menos una
+historia de usuario. En el Sprint 2 se agrega una columna con las pruebas que
+verifican cada requisito.
+
+## 6. Referencias
+
+International Organization for Standardization & International Electrotechnical
+Commission. (2023). *Systems and software engineering — Systems and software
+Quality Requirements and Evaluation (SQuaRE) — Product quality model*
+(ISO/IEC Standard No. 25010:2023).
+
+National Institute of Standards and Technology. (2025). *Digital identity
+guidelines: Authentication and authenticator management* (NIST Special
+Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
+
+OWASP Foundation. (2025). *OWASP Application Security Verification Standard
+5.0.0*. https://owasp.org/www-project-application-security-verification-standard/
