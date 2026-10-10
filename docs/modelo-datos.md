@@ -208,7 +208,7 @@ en S1-05.
 | RI-13 | No se borran usuarios, estadías ni comprobantes. | BR-12; requisitos, sección 1.3 |
 | RI-14 | La bitácora de auditoría es de solo inserción, y ningún evento guarda contraseñas ni tokens. | NFR-12 |
 | RI-15 | El correo de cada usuario es único, sin distinguir mayúsculas de minúsculas. | FR-01 |
-| RI-16 | Una contraseña restablecida por el administrador debe cambiarse en el siguiente inicio de sesión. | FR-05; requisitos, sección 1.3 |
+| RI-16 | Toda contraseña asignada por otra persona (cuenta nueva, restablecimiento o script de arranque) debe cambiarse en el primer inicio de sesión. | FR-03, FR-05; requisitos, sección 1.3 |
 
 ### 2.4 Decisiones del modelo lógico
 
@@ -216,9 +216,9 @@ en S1-05.
    no por propiedad del registro: un operador puede consultar cualquier estadía
    activa. La seguridad no depende de que los identificadores sean difíciles de
    adivinar, sino de que la API verifique el rol en cada petición (NFR-05).
-2. **Una contraseña restablecida debe cambiarse** (RI-16). Si el administrador
-   conociera la contraseña de un operador, podría actuar en su nombre, y se
-   perdería la trazabilidad de quién hizo cada registro.
+2. **Toda contraseña asignada por otra persona debe cambiarse** (RI-16). Si el
+   administrador conociera la contraseña de un operador, podría actuar en su
+   nombre, y se perdería la trazabilidad de quién hizo cada registro.
 3. **Un cambio de tope no puede dejar ilegal la tarifa vigente** (RI-09). La
    migración que cambia un tope falla si la tarifa vigente lo supera; primero el
    administrador ajusta su tarifa. El sistema nunca cambia precios por su cuenta.
@@ -236,8 +236,76 @@ en S1-05.
 
 ## 3. Modelo físico
 
-Pendiente.
+El esquema físico está en `backend/prisma/schema.prisma`, sobre PostgreSQL 16.
+Las reglas de integridad que Prisma no puede declarar (CHECK, índices únicos
+parciales y triggers) se agregan en S1-05.
+
+### 3.1 Decisiones del modelo físico
+
+1. **Nombres en inglés en el código y en español en la base.** Los modelos,
+   atributos y valores de enumeración de Prisma usan los nombres en inglés del
+   glosario. Las tablas, columnas y valores en la base usan los nombres en
+   español del modelo lógico, mediante `@@map` y `@map`. Así, la base coincide
+   uno a uno con el diagrama de la sección 2.2, y el código sigue la convención
+   en inglés.
+2. **Toda cuenta nueva debe cambiar su contraseña.** `debe_cambiar_contrasena`
+   es verdadero por defecto, porque quien crea una cuenta conoce su contraseña
+   inicial (RI-16).
+3. **El consecutivo del comprobante puede tener saltos.** Lo genera una
+   secuencia de PostgreSQL, que es única y creciente pero no reutiliza los
+   números de transacciones revertidas. Es aceptable porque el comprobante no es
+   una factura electrónica. Una numeración sin saltos exigiría bloquear un
+   contador en cada salida, lo que obligaría a registrar las salidas una por
+   una aunque haya varios operadores.
 
 ## 4. Diccionario de datos
+
+### 4.1 Catálogo de acciones de auditoría
+
+Cada evento de la bitácora registra quién actúa (`usuario_id`, nulo si nadie se
+autenticó), sobre qué actúa (`entidad`, con el nombre de la tabla, y
+`entidad_id`), cuándo (`ocurrido_en`) y desde qué IP (`ip`) (NFR-12).
+
+`detalle` guarda solo lo que la entidad afectada no conserva; lo demás se
+consulta en la propia entidad, que nunca se borra (RI-13). Así la bitácora no
+duplica datos personales. `detalle` nunca guarda contraseñas, hashes, tokens,
+cuerpos de petición, parámetros de consulta ni el correo escrito en un intento
+fallido, porque un usuario puede escribir por error su contraseña en ese campo
+(RI-14).
+
+| Valor en la base | Nombre en código | Descripción | Origen | Entidad afectada | `detalle` | Lo dispara |
+|---|---|---|---|---|---|---|
+| INICIO_SESION_EXITOSO | LOGIN_SUCCEEDED | Inicio de sesión correcto; crea una sesión. | FR-01, FR-19 | sesion | — | Operador o administrador |
+| INICIO_SESION_FALLIDO | LOGIN_FAILED | Intento de inicio de sesión rechazado. Es la base del bloqueo por intentos fallidos. | FR-01, FR-19, NFR-03 | usuario, si la cuenta existe; ninguna, si no | `motivo`: CREDENCIALES_INVALIDAS, CUENTA_DESACTIVADA, CUENTA_BLOQUEADA o CUENTA_INEXISTENTE | Persona no autenticada |
+| ACCESO_DENEGADO | ACCESS_DENIED | Petición rechazada con 403 por no tener el rol requerido. | NFR-05 | ninguna | `metodo` y `ruta`, sin parámetros de consulta | Operador o administrador |
+| INGRESO_REGISTRADO | ENTRY_REGISTERED | Ingreso de un vehículo. | FR-07, FR-19 | estadia | — | Operador o administrador |
+| INGRESO_RECHAZADO_PLACA_ACTIVA | ENTRY_REJECTED_ACTIVE_PLATE | Ingreso rechazado porque la placa ya tiene una estadía activa (posible placa clonada). | BR-03, FR-09, FR-19 | estadia (la activa) | `tipo_vehiculo`, `color` y `marca` del vehículo rechazado | Operador o administrador |
+| SALIDA_REGISTRADA | EXIT_REGISTERED | Salida de un vehículo y emisión de su comprobante, en la misma transacción (RI-11). | FR-12, FR-13, FR-14, FR-19 | estadia | — | Operador o administrador |
+| ESTADIA_ANULADA | STAY_VOIDED | Anulación de una estadía y, si lo tiene, de su comprobante. | BR-12, FR-15, FR-19 | estadia | — (el motivo queda en la estadía) | Administrador |
+| TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador |
+| PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador |
+| CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
+| CUENTA_DESACTIVADA | ACCOUNT_DEACTIVATED | Desactivación de una cuenta; revoca sus sesiones. | FR-04, FR-19, NFR-04 | usuario | — | Administrador |
+| CUENTA_REACTIVADA | ACCOUNT_REACTIVATED | Reactivación de una cuenta. | FR-04, FR-19 | usuario | — | Administrador |
+| CONTRASENA_RESTABLECIDA | PASSWORD_RESET | Restablecimiento de la contraseña de un operador; revoca sus sesiones. | FR-05, FR-19, US-04 | usuario | — | Administrador |
+| CONTRASENA_CAMBIADA | PASSWORD_CHANGED | Cambio de la propia contraseña, incluido el cambio obligatorio de RI-16. | FR-06, FR-19 | usuario | — | Operador o administrador |
+
+El bloqueo de NFR-03 cuenta solo los eventos `INICIO_SESION_FALLIDO` con motivo
+`CREDENCIALES_INVALIDAS` sobre la misma cuenta en los últimos 15 minutos. Los
+intentos hechos mientras la cuenta está bloqueada no prolongan el bloqueo.
+
+#### Eventos considerados y descartados
+
+| Evento | Por qué no está en el catálogo |
+|---|---|
+| Cierre de sesión | FR-19 no lo exige, y queda en `sesion.revocada_en`. |
+| Expiración de sesión | Se deduce de `expira_en` y `ultima_actividad_en`. |
+| Bloqueo de cuenta | Se deduce de los intentos fallidos y queda en `usuario.bloqueado_hasta`. |
+| Peticiones sin sesión (401) y exceso de peticiones (429) | No son acciones de negocio: van a los registros del servidor (NFR-07) y llenarían la bitácora sin aportar trazabilidad. |
+| Emisión del comprobante como evento aparte | Es el mismo acto que la salida (RI-11). |
+| Cambio de tope legal | No ocurre en la aplicación: queda en el commit de la migración y en la versión del tope, con su norma (BR-15). |
+| Consultas (historial, bitácora y resumen) | Ningún requisito exige registrarlas. |
+
+### 4.2 Atributos
 
 Pendiente.
