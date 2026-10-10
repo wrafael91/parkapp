@@ -1,0 +1,162 @@
+// ParkApp — modelo físico de datos.
+// Diseño lógico y reglas de integridad (RI-01 a RI-16): docs/modelo-datos.md
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OPERATOR      @map("OPERADOR")
+  ADMINISTRATOR @map("ADMINISTRADOR")
+
+  @@map("rol")
+}
+
+enum VehicleType {
+  CAR        @map("CARRO")
+  MOTORCYCLE @map("MOTO")
+
+  @@map("tipo_vehiculo")
+}
+
+enum StayStatus {
+  ACTIVE @map("ACTIVA")
+  CLOSED @map("CERRADA")
+  VOIDED @map("ANULADA")
+
+  @@map("estado_estadia")
+}
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  name               String    @map("nombre")
+  email              String    @unique @map("correo")
+  passwordHash       String    @map("hash_contrasena")
+  role               Role      @map("rol")
+  active             Boolean   @default(true) @map("activo")
+  mustChangePassword Boolean   @default(true) @map("debe_cambiar_contrasena")
+  lockedUntil        DateTime? @map("bloqueado_hasta") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  sessions            Session[]
+  ratesCreated        Rate[]
+  gracePeriodsCreated GracePeriod[]
+  staysEntered        Stay[]        @relation("StayEntryBy")
+  staysExited         Stay[]        @relation("StayExitBy")
+  staysVoided         Stay[]        @relation("StayVoidedBy")
+
+  @@map("usuario")
+}
+
+model Session {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("usuario_id")
+  tokenHash      String    @unique @map("token_hash")
+  ip             String
+  createdAt      DateTime  @default(now()) @map("creada_en") @db.Timestamptz(3)
+  lastActivityAt DateTime  @default(now()) @map("ultima_actividad_en") @db.Timestamptz(3)
+  expiresAt      DateTime  @map("expira_en") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revocada_en") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("sesion")
+}
+
+model LegalCap {
+  id             Int         @id @default(autoincrement())
+  vehicleType    VehicleType @map("tipo_vehiculo")
+  valuePerMinute Int         @map("valor_minuto")
+  hasGoldSeal    Boolean     @map("con_sello_oro")
+  regulation     String      @map("norma")
+  validFrom      DateTime    @map("vigente_desde") @db.Timestamptz(3)
+  validTo        DateTime?   @map("vigente_hasta") @db.Timestamptz(3)
+
+  rates Rate[]
+
+  @@map("tope_legal")
+}
+
+model Rate {
+  id             Int         @id @default(autoincrement())
+  vehicleType    VehicleType @map("tipo_vehiculo")
+  valuePerMinute Int         @map("valor_minuto")
+  legalCapId     Int         @map("tope_legal_id")
+  validFrom      DateTime    @default(now()) @map("vigente_desde") @db.Timestamptz(3)
+  validTo        DateTime?   @map("vigente_hasta") @db.Timestamptz(3)
+  createdById    Int         @map("creada_por_id")
+
+  legalCap  LegalCap @relation(fields: [legalCapId], references: [id], onDelete: Restrict)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  stays     Stay[]
+
+  @@index([legalCapId])
+  @@index([createdById])
+  @@map("tarifa")
+}
+
+model GracePeriod {
+  id          Int       @id @default(autoincrement())
+  minutes     Int       @map("minutos")
+  validFrom   DateTime  @default(now()) @map("vigente_desde") @db.Timestamptz(3)
+  validTo     DateTime? @map("vigente_hasta") @db.Timestamptz(3)
+  createdById Int       @map("creado_por_id")
+
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  stays     Stay[]
+
+  @@index([createdById])
+  @@map("periodo_gracia")
+}
+
+model Stay {
+  id            Int         @id @default(autoincrement())
+  plate         String      @map("placa")
+  vehicleType   VehicleType @map("tipo_vehiculo")
+  color         String
+  brand         String?     @map("marca")
+  status        StayStatus  @default(ACTIVE) @map("estado")
+  entryTime     DateTime    @default(now()) @map("hora_ingreso") @db.Timestamptz(3)
+  entryById     Int         @map("ingreso_por_id")
+  rateId        Int         @map("tarifa_id")
+  gracePeriodId Int         @map("periodo_gracia_id")
+  exitTime      DateTime?   @map("hora_salida") @db.Timestamptz(3)
+  exitById      Int?        @map("salida_por_id")
+  voidedAt      DateTime?   @map("anulada_en") @db.Timestamptz(3)
+  voidedById    Int?        @map("anulada_por_id")
+  voidReason    String?     @map("motivo_anulacion")
+
+  entryBy     User        @relation("StayEntryBy", fields: [entryById], references: [id], onDelete: Restrict)
+  exitBy      User?       @relation("StayExitBy", fields: [exitById], references: [id], onDelete: Restrict)
+  voidedBy    User?       @relation("StayVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  rate        Rate        @relation(fields: [rateId], references: [id], onDelete: Restrict)
+  gracePeriod GracePeriod @relation(fields: [gracePeriodId], references: [id], onDelete: Restrict)
+  receipt     Receipt?
+
+  @@index([entryById])
+  @@index([exitById])
+  @@index([voidedById])
+  @@index([rateId])
+  @@index([gracePeriodId])
+  @@map("estadia")
+}
+
+model Receipt {
+  id                 Int @id @default(autoincrement())
+  number             Int @unique @default(autoincrement()) @map("consecutivo")
+  stayId             Int @unique @map("estadia_id")
+  fullMinutes        Int @map("minutos_completos")
+  subtotal           Int
+  roundingAdjustment Int @map("ajuste_redondeo")
+  total              Int
+
+  stay Stay @relation(fields: [stayId], references: [id], onDelete: Restrict)
+
+  @@map("comprobante")
+}
