@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4) |
-| Versión | 1.0 — 8 de octubre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5) |
+| Versión | 1.1 — 10 de octubre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -54,6 +54,11 @@ automatizada en la que la API responde 403.
    arranque durante el despliegue. Las cuentas no se borran, solo se desactivan,
    para que cada registro conserve la identidad de quien lo hizo (BR-02, BR-12).
 
+4. **Nadie conoce la contraseña de otro usuario.** Cuando el administrador
+   restablece la contraseña de un operador, este debe cambiarla en su siguiente
+   inicio de sesión. Si el administrador la conociera, podría actuar en nombre
+   del operador, y se perdería la trazabilidad de quién hizo cada registro.
+   
 ## 2. Requisitos funcionales
 
 ### 2.1 Cuentas y sesión
@@ -64,7 +69,7 @@ automatizada en la que la API responde 403.
 | FR-02 | El sistema permite cerrar sesión. | Ambos | — |
 | FR-03 | El administrador crea cuentas de operador. No existe registro público. | Administrador | Sección 1.3 |
 | FR-04 | El administrador desactiva y reactiva cuentas de operador. Las cuentas no se borran. | Administrador | Sección 1.3, BR-12 |
-| FR-05 | El administrador restablece la contraseña de un operador. | Administrador | Sección 1.3 |
+| FR-05 | El administrador restablece la contraseña de un operador. El operador debe cambiarla en su siguiente inicio de sesión, antes de usar cualquier otra función. | Administrador | Sección 1.3 |
 | FR-06 | Cada usuario puede cambiar su propia contraseña. | Ambos | Sección 1.3 |
 
 ### 2.2 Ingreso
@@ -226,6 +231,7 @@ cortar su acceso sin perder el rastro de sus registros.
 #### US-04 Restablecer la contraseña de un operador
 
 **Como** administrador, **quiero** restablecer la contraseña de un operador
+**Dado** que restablecí la contraseña de un operador, **cuando** él inicia sesión con ella, **entonces** el sistema le exige cambiarla antes de permitir cualquier otra acción.
 **para** que recupere el acceso si la olvida.
 
 - **Dado** un operador, **cuando** restablezco su contraseña, **entonces** sus sesiones abiertas se invalidan y el evento queda en la bitácora.
@@ -375,6 +381,13 @@ Quality Requirements and Evaluation (SQuaRE) — Product quality model*
 
 National Institute of Standards and Technology. (2025). *Digital identity
 guidelines: Authentication and authenticator management* (NIST Special
+
+## 7. Historial de cambios
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 1.0 | 8 de octubre de 2026 | Versión inicial |
+| 1.1 | 10 de octubre de 2026 | FR-05 y US-04: una contraseña restablecida debe cambiarse en el siguiente inicio de sesión (hallazgo del modelo de datos, S1-04). Se agrega la decisión 4 de la sección 1.3. |
 Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
