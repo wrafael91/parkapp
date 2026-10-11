@@ -167,10 +167,10 @@ erDiagram
         bigint id PK
         accion_auditoria accion
         int usuario_id FK "nulo si no se identificó"
-        text entidad
-        int entidad_id
-        json detalle
-        text ip
+        text entidad "nulo si no hay entidad afectada"
+        int entidad_id "nulo si no hay entidad afectada"
+        json detalle "opcional"
+        text ip "nulo en eventos del sistema"
         timestamptz ocurrido_en
     }
     USUARIO ||--o{ SESION : "abre"
@@ -209,6 +209,8 @@ en S1-05.
 | RI-14 | La bitácora de auditoría es de solo inserción, y ningún evento guarda contraseñas ni tokens. | NFR-12 |
 | RI-15 | El correo de cada usuario es único, sin distinguir mayúsculas de minúsculas. | FR-01 |
 | RI-16 | Toda contraseña asignada por otra persona (cuenta nueva, restablecimiento o script de arranque) debe cambiarse en el primer inicio de sesión. | FR-03, FR-05; requisitos, sección 1.3 |
+| RI-17 | En la bitácora, `entidad` y `entidad_id` van juntos: ambos tienen valor o ambos son nulos. | NFR-12; catálogo de la sección 4.1 |
+| RI-18 | En la bitácora, la IP solo puede ser nula si el evento no tiene usuario, como en la creación del primer administrador con el script de despliegue. | NFR-12; catálogo de la sección 4.1 |
 
 ### 2.4 Decisiones del modelo lógico
 
@@ -257,6 +259,12 @@ parciales y triggers) se agregan en S1-05.
    una factura electrónica. Una numeración sin saltos exigiría bloquear un
    contador en cada salida, lo que obligaría a registrar las salidas una por
    una aunque haya varios operadores.
+4. **Entidad e IP opcionales en la bitácora.** Algunos eventos no afectan una
+    entidad, como un acceso denegado o un inicio de sesión fallido con un correo
+    que no existe. Otros no vienen de una petición HTTP y no tienen IP, como la
+    creación del primer administrador con el script de despliegue. Por eso
+    `entidad`, `entidad_id` e `ip` son opcionales, con las condiciones de RI-17 y
+    RI-18.
 
 ## 4. Diccionario de datos
 
@@ -264,7 +272,8 @@ parciales y triggers) se agregan en S1-05.
 
 Cada evento de la bitácora registra quién actúa (`usuario_id`, nulo si nadie se
 autenticó), sobre qué actúa (`entidad`, con el nombre de la tabla, y
-`entidad_id`), cuándo (`ocurrido_en`) y desde qué IP (`ip`) (NFR-12).
+`entidad_id`, ambos nulos si el evento no afecta una entidad), cuándo
+(`ocurrido_en`) y desde qué IP (`ip`, nula en los eventos del sistema) (NFR-12).
 
 `detalle` guarda solo lo que la entidad afectada no conserva; lo demás se
 consulta en la propia entidad, que nunca se borra (RI-13). Así la bitácora no
