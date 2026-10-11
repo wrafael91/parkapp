@@ -185,7 +185,7 @@ model AuditEvent {
   id         BigInt      @id @default(autoincrement())
   action     AuditAction @map("accion")
   userId     Int?        @map("usuario_id")
-  entity     String      @map("entidad")
+  entity     String?     @map("entidad")
   entityId   Int?        @map("entidad_id")
   detail     Json?       @map("detalle")
   ip         String?
