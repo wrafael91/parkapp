@@ -149,10 +149,10 @@ erDiagram
         int tarifa_id FK
         int periodo_gracia_id FK
         timestamptz hora_salida "nulo si sigue activa"
-        int salida_por_id FK
-        timestamptz anulada_en
-        int anulada_por_id FK
-        text motivo_anulacion
+        int salida_por_id FK "nulo si sigue activa"
+        timestamptz anulada_en "nulo si no se anuló"
+        int anulada_por_id FK "nulo si no se anuló"
+        text motivo_anulacion "nulo si no se anuló"
     }
     COMPROBANTE {
         int id PK
@@ -169,7 +169,7 @@ erDiagram
         int usuario_id FK "nulo si no se identificó"
         text entidad "nulo si no hay entidad afectada"
         int entidad_id "nulo si no hay entidad afectada"
-        json detalle "opcional"
+        jsonb detalle "opcional"
         text ip "nulo en eventos del sistema"
         timestamptz ocurrido_en
     }
@@ -317,4 +317,142 @@ intentos hechos mientras la cuenta está bloqueada no prolongan el bloqueo.
 
 ### 4.2 Atributos
 
-Pendiente.
+**Columna** es el nombre en la base y **Código** el nombre en Prisma (`@map`).
+**Tipo** es el tipo en PostgreSQL. Las restricciones que Prisma no declara
+(CHECK, índices únicos parciales y triggers) se agregan en S1-05 y se citan por
+su regla RI.
+
+#### usuario (`User`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador del usuario. |
+| nombre | `name` | TEXT | Sí | — | — | Nombre completo. |
+| correo | `email` | TEXT | Sí | — | UK | Correo de inicio de sesión, en minúsculas (RI-15). |
+| hash_contrasena | `passwordHash` | TEXT | Sí | — | — | Hash adaptativo con sal; nunca la contraseña (NFR-01). |
+| rol | `role` | rol | Sí | — | — | OPERADOR o ADMINISTRADOR. |
+| activo | `active` | BOOLEAN | Sí | true | — | Falso si la cuenta está desactivada; las cuentas no se borran (FR-04). |
+| debe_cambiar_contrasena | `mustChangePassword` | BOOLEAN | Sí | true | — | Verdadero si la contraseña fue asignada por otra persona (RI-16). |
+| bloqueado_hasta | `lockedUntil` | TIMESTAMPTZ(3) | No | — | — | Fin del bloqueo por intentos fallidos; nulo si no está bloqueada (NFR-03). |
+| creado_en | `createdAt` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Creación de la cuenta. |
+
+#### sesion (`Session`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la sesión. |
+| usuario_id | `userId` | INTEGER | Sí | — | FK → usuario | Dueño de la sesión. |
+| token_hash | `tokenHash` | TEXT | Sí | — | UK | Huella SHA-256 del token; el token nunca se guarda (sección 2.4, decisión 4). |
+| ip | `ip` | TEXT | Sí | — | — | IP desde la que se inició la sesión. |
+| creada_en | `createdAt` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Inicio de la sesión. |
+| ultima_actividad_en | `lastActivityAt` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Última petición; controla la expiración por 30 minutos de inactividad (NFR-04). |
+| expira_en | `expiresAt` | TIMESTAMPTZ(3) | Sí | — | — | Expiración absoluta, máximo 12 horas después del inicio (NFR-04). |
+| revocada_en | `revokedAt` | TIMESTAMPTZ(3) | No | — | — | Cierre de sesión o revocación; nulo si sigue vigente. |
+
+#### tope_legal (`LegalCap`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la versión. |
+| tipo_vehiculo | `vehicleType` | tipo_vehiculo | Sí | — | — | Tipo de vehículo al que aplica. |
+| valor_minuto | `valuePerMinute` | INTEGER | Sí | — | — | Valor máximo por minuto en COP, IVA incluido (BR-09, BR-10). |
+| con_sello_oro | `hasGoldSeal` | BOOLEAN | Sí | — | — | Verdadero si el valor corresponde al tope con Sello Oro (BR-15). |
+| norma | `regulation` | TEXT | Sí | — | — | Norma que fija el tope, por ejemplo, Decreto 652 de 2025, art. 200. |
+| vigente_desde | `validFrom` | TIMESTAMPTZ(3) | Sí | — | — | Inicio de la vigencia. No tiene valor por defecto: lo fija la migración según la norma. |
+| vigente_hasta | `validTo` | TIMESTAMPTZ(3) | No | — | — | Fin de la vigencia; nulo si está vigente (RI-07). |
+
+#### tarifa (`Rate`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la versión. |
+| tipo_vehiculo | `vehicleType` | tipo_vehiculo | Sí | — | — | Tipo de vehículo al que aplica. |
+| valor_minuto | `valuePerMinute` | INTEGER | Sí | — | — | Valor por minuto en COP, IVA incluido; mayor que cero y sin superar el tope (RI-09). |
+| tope_legal_id | `legalCapId` | INTEGER | Sí | — | FK → tope_legal | Tope legal del mismo tipo de vehículo, vigente al crear la tarifa (RI-09). |
+| vigente_desde | `validFrom` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Inicio de la vigencia. |
+| vigente_hasta | `validTo` | TIMESTAMPTZ(3) | No | — | — | Fin de la vigencia; nulo si está vigente (RI-07). |
+| creada_por_id | `createdById` | INTEGER | Sí | — | FK → usuario | Administrador que creó la versión. |
+
+#### periodo_gracia (`GracePeriod`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la versión. |
+| minutos | `minutes` | INTEGER | Sí | — | — | Minutos iniciales sin cobro; entero mayor o igual a cero (RI-10). |
+| vigente_desde | `validFrom` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Inicio de la vigencia. |
+| vigente_hasta | `validTo` | TIMESTAMPTZ(3) | No | — | — | Fin de la vigencia; nulo si está vigente (RI-07). |
+| creado_por_id | `createdById` | INTEGER | Sí | — | FK → usuario | Administrador que creó la versión. |
+
+#### estadia (`Stay`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la estadía. |
+| placa | `plate` | TEXT | Sí | — | — | Placa normalizada (RI-01). |
+| tipo_vehiculo | `vehicleType` | tipo_vehiculo | Sí | — | — | Tipo observado al ingreso. |
+| color | `color` | TEXT | Sí | — | — | Color observado al ingreso (BR-02). |
+| marca | `brand` | TEXT | No | — | — | Marca observada al ingreso. |
+| estado | `status` | estado_estadia | Sí | ACTIVA | — | ACTIVA, CERRADA o ANULADA (RI-03, RI-04). |
+| hora_ingreso | `entryTime` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Hora del servidor al registrar el ingreso (BR-16). |
+| ingreso_por_id | `entryById` | INTEGER | Sí | — | FK → usuario | Usuario que registró el ingreso. |
+| tarifa_id | `rateId` | INTEGER | Sí | — | FK → tarifa | Tarifa vigente al ingreso, del mismo tipo de vehículo (BR-11, RI-06). |
+| periodo_gracia_id | `gracePeriodId` | INTEGER | Sí | — | FK → periodo_gracia | Periodo de gracia vigente al ingreso (BR-11, RI-06). |
+| hora_salida | `exitTime` | TIMESTAMPTZ(3) | No | — | — | Hora del servidor al registrar la salida; nula si sigue activa (RI-05). |
+| salida_por_id | `exitById` | INTEGER | No | — | FK → usuario | Usuario que registró la salida. |
+| anulada_en | `voidedAt` | TIMESTAMPTZ(3) | No | — | — | Hora del servidor de la anulación. |
+| anulada_por_id | `voidedById` | INTEGER | No | — | FK → usuario | Administrador que anuló la estadía. |
+| motivo_anulacion | `voidReason` | TEXT | No | — | — | Motivo de la anulación, obligatorio si el estado es ANULADA (RI-03). |
+
+#### comprobante (`Receipt`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador interno. |
+| consecutivo | `number` | INTEGER | Sí | secuencia | UK | Número visible del comprobante; único y creciente, puede tener saltos (sección 3.1, decisión 3). |
+| estadia_id | `stayId` | INTEGER | Sí | — | FK → estadia, UK | Estadía cobrada; tiene como máximo un comprobante (RI-11). |
+| minutos_completos | `fullMinutes` | INTEGER | Sí | — | — | Minutos completos de la estadía (BR-06). |
+| subtotal | `subtotal` | INTEGER | Sí | — | — | Minutos completos por tarifa, en COP; $0 si la estadía no superó la gracia (BR-08). |
+| ajuste_redondeo | `roundingAdjustment` | INTEGER | Sí | — | — | Valor descontado por redondeo, entre $0 y $49 (BR-07, RI-12). |
+| total | `total` | INTEGER | Sí | — | — | Subtotal menos el ajuste; múltiplo de $50 (RI-12). |
+
+#### evento_auditoria (`AuditEvent`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | BIGINT | Sí | autoincremental | PK | Identificador del evento. |
+| accion | `action` | accion_auditoria | Sí | — | — | Una de las 14 acciones del catálogo (sección 4.1). |
+| usuario_id | `userId` | INTEGER | No | — | FK → usuario | Quien actúa; nulo si nadie se autenticó. |
+| entidad | `entity` | TEXT | No | — | — | Tabla afectada; nula si el evento no afecta una entidad (RI-17). |
+| entidad_id | `entityId` | INTEGER | No | — | — | Registro afectado; nulo si y solo si `entidad` es nula (RI-17). |
+| detalle | `detail` | JSONB | No | — | — | Solo lo que la entidad afectada no conserva; nunca contraseñas ni tokens (RI-14). |
+| ip | `ip` | TEXT | No | — | — | IP de la petición; nula solo en eventos del sistema (RI-18). |
+| ocurrido_en | `occurredAt` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Momento del evento. |
+
+### 4.3 Tipos enumerados
+
+| Tipo | Valor en la base | Código |
+|---|---|---|
+| rol | OPERADOR | `OPERATOR` |
+| rol | ADMINISTRADOR | `ADMINISTRATOR` |
+| tipo_vehiculo | CARRO | `CAR` |
+| tipo_vehiculo | MOTO | `MOTORCYCLE` |
+| estado_estadia | ACTIVA | `ACTIVE` |
+| estado_estadia | CERRADA | `CLOSED` |
+| estado_estadia | ANULADA | `VOIDED` |
+| accion_auditoria | 14 valores | Ver la sección 4.1 |
+
+### 4.4 Índices
+
+| Tabla | Columnas | Propósito |
+|---|---|---|
+| usuario | correo (único) | Inicio de sesión por correo (RI-15). |
+| sesion | token_hash (único) | Buscar la sesión de cada petición (NFR-04). |
+| sesion | usuario_id | Revocar las sesiones de un usuario (NFR-04). |
+| comprobante | consecutivo (único); estadia_id (único) | Numeración y un comprobante por estadía (RI-11). |
+| tarifa, periodo_gracia y estadia | Cada clave foránea | Consultas por usuario, tarifa y periodo de gracia, como el filtro por operador del historial (FR-18) y el resumen de recaudo (FR-20). |
+| evento_auditoria | usuario_id | Consultar los eventos de un usuario (FR-19). |
+| evento_auditoria | (accion, entidad, entidad_id, ocurrido_en) | Contar los intentos fallidos de una cuenta en los últimos 15 minutos (NFR-03). |
+
+Los índices para los demás filtros del historial (fechas y placa, FR-18) se
+definen en el Sprint 3 con las pruebas de carga de NFR-14, para decidirlos con
+mediciones y no por suposición.
