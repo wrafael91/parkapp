@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4) |
-| Versión | 1.2 — 6 de octubre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5) |
+| Versión | 1.3 — 13 de octubre de 2026 |
 
 ## 1. Propósito
 
@@ -128,7 +128,8 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
 
 ## 8. Glosario
 
-Términos del dominio y su nombre en el código:
+Términos del dominio y su nombre en el código. El nombre de cada columna está en
+el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 
 | Español | Código |
 |---|---|
@@ -138,6 +139,31 @@ Términos del dominio y su nombre en el código:
 | Periodo de gracia | `gracePeriod` |
 | Comprobante de pago | `receipt` |
 | Anulación | `void` |
+| Usuario | `user` |
+| Rol | `role` |
+| Operador | `OPERATOR` |
+| Administrador | `ADMINISTRATOR` |
+| Sesión | `session` |
+| Revocación de sesión | `revoke` |
+| Bloqueo de cuenta | `lock` |
+| Placa | `plate` |
+| Tipo de vehículo | `vehicleType` |
+| Carro | `CAR` |
+| Moto | `MOTORCYCLE` |
+| Marca | `brand` |
+| Ingreso | `entry` |
+| Salida | `exit` |
+| Estado de la estadía: activa, cerrada, anulada | `status`: `ACTIVE`, `CLOSED`, `VOIDED` |
+| Valor por minuto | `valuePerMinute` |
+| Sello Oro | `goldSeal` (atributo `hasGoldSeal`) |
+| Norma | `regulation` |
+| Vigencia | `validFrom` / `validTo` |
+| Consecutivo | `number` |
+| Minutos completos | `fullMinutes` |
+| Ajuste por redondeo | `roundingAdjustment` |
+| Evento de auditoría | `auditEvent` |
+| Acción de auditoría | `auditAction` |
+| Bitácora de auditoría | `AuditEvent` (el conjunto de eventos) |
 
 ## 9. Referencias
 
@@ -159,3 +185,4 @@ https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=34306
 | 1.0 | 4 de octubre de 2026 | Versión inicial |
 | 1.1 | 6 de octubre de 2026 | Se agregan BR-15 (tope legal fuera del alcance del administrador) y BR-16 (horas asignadas por el servidor); se ajusta BR-10 |
 | 1.2 | 6 de octubre de 2026 | BR-11 se extiende al periodo de gracia, que también se congela al ingreso (hallazgo del análisis de requisitos, S1-03); se agregan dos elementos fuera de alcance |
+| 1.3 | 13 de octubre de 2026 | Se amplía el glosario con los términos del modelo de datos (S1-04) |
