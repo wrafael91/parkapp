@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4) |
-| Versión | 1.0 — 8 de octubre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5) |
+| Versión | 1.1 — 10 de octubre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -54,6 +54,12 @@ automatizada en la que la API responde 403.
    arranque durante el despliegue. Las cuentas no se borran, solo se desactivan,
    para que cada registro conserve la identidad de quien lo hizo (BR-02, BR-12).
 
+4. **Nadie conoce la contraseña de otro usuario.** Toda contraseña asignada por
+  otra persona (al crear una cuenta, al restablecerla o con el script de
+  arranque) debe cambiarse en el primer inicio de sesión. Si el administrador
+  conociera la contraseña de un operador, podría actuar en su nombre, y se
+  perdería la trazabilidad de quién hizo cada registro.
+   
 ## 2. Requisitos funcionales
 
 ### 2.1 Cuentas y sesión
@@ -62,9 +68,9 @@ automatizada en la que la API responde 403.
 |---|---|---|---|
 | FR-01 | El sistema permite iniciar sesión con correo y contraseña. Una cuenta desactivada no puede iniciar sesión. | Ambos | Sección 1.3 |
 | FR-02 | El sistema permite cerrar sesión. | Ambos | — |
-| FR-03 | El administrador crea cuentas de operador. No existe registro público. | Administrador | Sección 1.3 |
+| FR-03 | El administrador crea cuentas de operador con una contraseña inicial, que el operador debe cambiar en su primer inicio de sesión. No existe registro público. | Administrador | Sección 1.3 |
 | FR-04 | El administrador desactiva y reactiva cuentas de operador. Las cuentas no se borran. | Administrador | Sección 1.3, BR-12 |
-| FR-05 | El administrador restablece la contraseña de un operador. | Administrador | Sección 1.3 |
+| FR-05 | El administrador restablece la contraseña de un operador. El operador debe cambiarla en su siguiente inicio de sesión, antes de usar cualquier otra función. | Administrador | Sección 1.3 |
 | FR-06 | Cada usuario puede cambiar su propia contraseña. | Ambos | Sección 1.3 |
 
 ### 2.2 Ingreso
@@ -73,7 +79,7 @@ automatizada en la que la API responde 403.
 |---|---|---|---|
 | FR-07 | El sistema registra el ingreso con placa, tipo de vehículo y color (obligatorios) y marca (opcional). La hora y el operador los asigna el servidor. | Ambos | BR-01, BR-02, BR-16 |
 | FR-08 | El sistema normaliza la placa (mayúsculas, sin espacios ni guiones) y valida su formato según el tipo de vehículo. | Ambos | BR-02 |
-| FR-09 | El sistema rechaza el ingreso de una placa con estadía activa y alerta al operador de una posible placa clonada. | Ambos | BR-03 |
+| FR-09 | El sistema rechaza el ingreso de una placa con estadía activa, alerta al operador de una posible placa clonada y registra el intento en la bitácora con los datos del vehículo rechazado. | Ambos | BR-03 |
 | FR-10 | El sistema lista los vehículos que están dentro del parqueadero. | Ambos | — |
 | FR-11 | El sistema permite buscar una estadía activa por placa. | Ambos | BR-13 |
 
@@ -103,7 +109,7 @@ automatizada en la que la API responde 403.
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
 | FR-18 | El administrador consulta el historial de estadías y comprobantes, con filtros por fechas, placa, operador y estado. | Administrador | BR-12 |
-| FR-19 | El administrador consulta la bitácora de auditoría: inicios de sesión (exitosos y fallidos), ingresos, salidas, anulaciones, cambios de configuración y gestión de cuentas. | Administrador | BR-12 |
+| FR-19 | El administrador consulta la bitácora de auditoría: inicios de sesión (exitosos y fallidos), ingresos, ingresos rechazados por placa con estadía activa, salidas, anulaciones, cambios de configuración, gestión de cuentas y accesos denegados. | Administrador | BR-03, BR-12 |
 | FR-20 | El administrador ve un resumen del recaudo por día y por operador. | Administrador | Sección 1.3 |
 
 ## 3. Requisitos no funcionales
@@ -210,7 +216,7 @@ que solo yo pueda actuar con mi cuenta.
 **Como** administrador, **quiero** crear cuentas de operador **para** que cada
 persona opere con su propia identidad.
 
-- **Dado** un correo no registrado y una contraseña válida, **cuando** creo la cuenta, **entonces** el operador puede iniciar sesión.
+- **Dado** un correo no registrado y una contraseña válida, **cuando** creo la cuenta, **entonces** el operador puede iniciar sesión, y el sistema le exige cambiar la contraseña antes de permitir cualquier otra acción.
 - **Dado** una contraseña de menos de 15 caracteres o que está en la lista de contraseñas filtradas, **cuando** creo la cuenta, **entonces** se rechaza (NFR-02).
 - **Dado** que soy operador, **cuando** intento crear una cuenta, **entonces** la API responde 403.
 
@@ -226,6 +232,7 @@ cortar su acceso sin perder el rastro de sus registros.
 #### US-04 Restablecer la contraseña de un operador
 
 **Como** administrador, **quiero** restablecer la contraseña de un operador
+**Dado** que restablecí la contraseña de un operador, **cuando** él inicia sesión con ella, **entonces** el sistema le exige cambiarla antes de permitir cualquier otra acción.
 **para** que recupere el acceso si la olvida.
 
 - **Dado** un operador, **cuando** restablezco su contraseña, **entonces** sus sesiones abiertas se invalidan y el evento queda en la bitácora.
@@ -243,7 +250,7 @@ cortar su acceso sin perder el rastro de sus registros.
 **Como** operador, **quiero** registrar el ingreso de un vehículo **para** que
 su estadía se cuente desde ese momento.
 
-- **Dado** una placa sin estadía activa, **cuando** registro placa, tipo y color, **entonces** se crea la estadía con la hora del servidor y mi usuario.
+- **Dado** una placa con estadía activa, **cuando** intento registrar su ingreso, **entonces** se rechaza con una alerta de posible placa clonada (BR-03), y el intento queda en la bitácora con los datos del vehículo rechazado.
 - **Dado** que escribo `abc-123`, **cuando** registro el ingreso, **entonces** la placa se guarda como `ABC123`.
 - **Dado** una placa con formato inválido para su tipo de vehículo, **cuando** registro el ingreso, **entonces** se rechaza.
 - **Dado** una placa con estadía activa, **cuando** intento registrar su ingreso, **entonces** se rechaza con una alerta de posible placa clonada (BR-03).
@@ -358,7 +365,7 @@ cuadrar caja con lo que entrega cada operador.
 | FR-16 | BR-09, BR-10, BR-11, BR-15 | US-11 |
 | FR-17 | BR-08, BR-11 | US-12 |
 | FR-18 | BR-12 | US-13 |
-| FR-19 | BR-12 | US-14 |
+| FR-19 | BR-03, BR-12 | US-14 |
 | FR-20 | Sección 1.3 | US-15 |
 
 Cobertura: las 16 reglas de negocio (BR-01 a BR-16) aparecen en al menos un
@@ -375,6 +382,13 @@ Quality Requirements and Evaluation (SQuaRE) — Product quality model*
 
 National Institute of Standards and Technology. (2025). *Digital identity
 guidelines: Authentication and authenticator management* (NIST Special
+
+## 7. Historial de cambios
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 1.0 | 8 de octubre de 2026 | Versión inicial |
+| 1.1 | 10 de octubre de 2026 | Toda contraseña asignada por otra persona debe cambiarse en el primer inicio de sesión (sección 1.3, FR-03, FR-05, US-02 y US-04). Los ingresos rechazados por placa con estadía activa y los accesos denegados quedan en la bitácora (FR-09, FR-19 y US-06). Hallazgos del modelo de datos, S1-04. |
 Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
