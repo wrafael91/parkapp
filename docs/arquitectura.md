@@ -99,7 +99,128 @@ flowchart TB
 
 ## 5. Componentes de la API (C4, nivel 3)
 
-Pendiente.
+```mermaid
+flowchart TB
+    spa["<b>Aplicación web</b><br/>[React]"]
+
+    subgraph api["API REST"]
+        direction TB
+        mw["<b>Cadena de middleware</b><br/>Encabezados de seguridad · Límite de peticiones ·<br/>Verificación de Origin · Sesión · Rol · Validación"]
+
+        subgraph modulos["Módulos de dominio"]
+            direction LR
+            cuentas["<b>Cuentas y sesión</b><br/>Inicio y cierre de sesión,<br/>cuentas y contraseñas"]
+            estadias["<b>Estadías</b><br/>Ingreso, salida, comprobante,<br/>anulación y consultas"]
+            config["<b>Configuración</b><br/>Tarifas, periodo de gracia<br/>y topes legales"]
+            auditoria["<b>Auditoría</b><br/>Registro y consulta<br/>de eventos"]
+        end
+
+        calculo["<b>Cálculo del cobro</b><br/>Función pura de dominio"]
+        errores["<b>Manejador de errores</b><br/>Respuestas sin detalles internos"]
+        repos["<b>Acceso a datos</b><br/>[Prisma]"]
+    end
+
+    db[("<b>Base de datos</b><br/>[PostgreSQL]")]
+
+    spa -- "JSON, /api" --> mw
+    mw --> modulos
+    estadias --> calculo
+    cuentas -. "registra eventos" .-> auditoria
+    estadias -. "registra eventos" .-> auditoria
+    config -. "registra eventos" .-> auditoria
+    modulos --> repos
+    repos -- "SQL con TLS" --> db
+    modulos -. "errores" .-> errores
+
+    classDef ext fill:#438dd5,stroke:#2e6295,color:#ffffff
+    classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000000
+    class spa,db ext
+    class mw,cuentas,estadias,config,auditoria,calculo,errores,repos comp
+```
+
+### 5.1 Componentes
+
+| Componente | Responsabilidad | Requisitos |
+|---|---|---|
+| Cadena de middleware | Procesa cada petición, en este orden: encabezados de seguridad; límite de peticiones; verificación del encabezado `Origin` en las peticiones que modifican datos; sesión (busca el hash del token, verifica que no esté revocada ni expirada y actualiza la última actividad); cambio obligatorio de contraseña (si el usuario debe cambiarla, solo se le permite eso); rol, según la matriz de permisos, respondiendo 403 y registrando `ACCESO_DENEGADO`; y validación de la entrada contra un esquema. | NFR-04, NFR-05, NFR-06, NFR-08, RI-16; ADR 0003 |
+| Cuentas y sesión | Inicio y cierre de sesión, creación, desactivación y reactivación de cuentas, y cambio y restablecimiento de contraseñas. | FR-01 a FR-06 |
+| Estadías | Ingreso, salida con su comprobante, anulación, consulta de vehículos dentro, búsqueda por placa, historial y resumen de recaudo. | FR-07 a FR-15, FR-18, FR-20 |
+| Configuración | Versiones de tarifa y de periodo de gracia. Los topes legales son de solo lectura (BR-15). | FR-16, FR-17 |
+| Auditoría | Registra los eventos que le envían los demás módulos y permite consultarlos. Los eventos de una acción exitosa se registran en la misma transacción de la acción. Los de una acción rechazada (inicio de sesión fallido, acceso denegado o ingreso rechazado) se registran aparte, para que queden aunque la acción no ocurra. | FR-19, NFR-12 |
+| Cálculo del cobro | Función pura: recibe la hora de ingreso, la hora de salida, la tarifa y el periodo de gracia, y devuelve los minutos completos, el subtotal, el ajuste y el total. No accede a la base de datos ni al reloj del sistema. | BR-05 a BR-08, NFR-20 |
+| Acceso a datos | Único componente que usa Prisma y habla con la base de datos. | — |
+| Manejador de errores | Convierte cualquier error en una respuesta sin detalles internos, y deja el detalle solo en los registros del servidor. | NFR-07 |
+
+### 5.2 Reglas de dependencia
+
+1. Las rutas solo reciben la petición ya validada y delegan en el servicio. Las
+   reglas de negocio están en los servicios.
+2. Los servicios no conocen HTTP, así que se pueden probar sin levantar el
+   servidor.
+3. Solo la capa de acceso a datos usa Prisma.
+4. Un módulo no lee ni escribe las tablas de otro: usa el servicio de ese módulo
+   (ADR 0001). La única excepción es Auditoría, que todos los módulos llaman para
+   registrar eventos.
+
+### 5.3 Flujo de ejemplo: registrar una salida
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operador
+    participant MW as Middleware
+    participant S as Estadías: servicio
+    participant C as Cálculo del cobro
+    participant R as Acceso a datos
+    participant DB as PostgreSQL
+
+    Op->>MW: POST /api/estadias/{id}/salida (cookie de sesión)
+    MW->>MW: Verifica Origin, sesión, rol y esquema
+    MW->>S: registrarSalida(id, usuario)
+    S->>R: Inicia la transacción
+    R->>DB: Bloquea la estadía y lee su tarifa y su periodo de gracia
+    R->>DB: Toma la hora actual de la base de datos (BR-16)
+    S->>C: calcular(ingreso, salida, tarifa, gracia)
+    C-->>S: Minutos completos, subtotal, ajuste y total
+    S->>R: Cierra la estadía, crea el comprobante y registra el evento
+    R->>DB: Confirma la transacción (RI-11)
+    S-->>MW: Comprobante
+    MW-->>Op: 201 Created y comprobante
+```
+
+La hora de salida es la de la base de datos, nunca la que envía el cliente
+(BR-16). El cierre de la estadía, el comprobante y el evento de auditoría
+quedan en una sola transacción: si algo falla, no queda ninguno (RI-11).
+
+### 5.4 Concurrencia
+
+Varios operadores pueden intentar la misma operación al mismo tiempo. La
+integridad no depende de que la API lo evite: la base de datos resuelve la
+carrera.
+
+- **Dos ingresos simultáneos de la misma placa:** el índice único parcial de
+  RI-02 acepta el primero y rechaza el segundo. La API responde 409 y registra
+  `INGRESO_RECHAZADO_PLACA_ACTIVA`.
+- **Dos salidas simultáneas de la misma estadía:** la segunda espera a que se
+  libere el bloqueo de la fila. Cuando lo obtiene, la estadía ya está cerrada y
+  la API responde 409. Además, el comprobante es único por estadía (RI-11).
+
+### 5.5 Estructura del código
+
+Los nombres de carpetas siguen el glosario en inglés.
+
+```
+backend/src/
+├── modules/
+│   ├── accounts/      rutas, esquemas, servicio y acceso a datos
+│   ├── stays/
+│   ├── settings/
+│   └── audit/
+├── domain/
+│   └── fee-calculation/   función pura y sus pruebas
+├── middleware/
+└── app                cadena de middleware y registro de rutas
+```
 
 ## 6. Despliegue en AWS
 
