@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-06 (#7) |
-| Versión | 0.1 — 14 de octubre de 2026 (en construcción) |
+| Versión | 1.0 — 17 de octubre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -367,3 +367,14 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | [0001](adr/0001-monolito-modular.md) | Monolito modular por capas |
 | [0002](adr/0002-mismo-origen.md) | Aplicación web y API en el mismo origen |
 | [0003](adr/0003-sesion-en-cookie.md) | Sesión con token aleatorio en una cookie `HttpOnly` |
+| [0004](adr/0004-region-y-dimensionamiento.md) | Región us-east-1 con recursos de tamaño mínimo |
+| [0005](adr/0005-https-y-dominio.md) | HTTPS con Let's Encrypt en Nginx y dominio en Cloudflare |
+| [0006](adr/0006-secretos-en-parameter-store.md) | Secretos en Parameter Store y usuarios de base de datos separados |
+| [0007](adr/0007-acceso-y-despliegue-sin-ssh.md) | Administración y despliegue sin SSH ni llaves de larga duración |
+
+## Historial de cambios
+
+| Versión | Fecha | Cambios |
+|---|---|---|
+| 0.1 | 14 de octubre de 2026 | Secciones 1 a 5 y 7; ADR 0001 a 0003. |
+| 1.0 | 17 de octubre de 2026 | Sección 6, despliegue en AWS; ADR 0004 a 0007; diagramas de componentes y de la salida simplificados. |
