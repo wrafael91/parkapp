@@ -222,7 +222,143 @@ backend/src/
 
 ## 6. Despliegue en AWS
 
-Pendiente.
+Esta sección es la vista de despliegue: dónde corre cada contenedor de la sección 4 y qué controles lo protegen. Las decisiones se justifican en los ADR 0004 a 0007.
+
+### 6.1 Diagrama de despliegue
+
+```mermaid
+flowchart TB
+    subgraph fuera[" "]
+        direction LR
+        usuario["<b>Operador o administrador</b><br/>[Navegador web]"]
+        dns["<b>DNS del dominio</b><br/>[Cloudflare, sin proxy]"]
+        gh["<b>GitHub Actions</b><br/>Pruebas, compilación<br/>y despliegue"]
+    end
+
+    subgraph aws["AWS · Región us-east-1 (Norte de Virginia)"]
+        direction TB
+        subgraph vpc["VPC 10.0.0.0/16"]
+            direction LR
+            subgraph pub["Subred pública · us-east-1a"]
+                ec2["<b>Instancia EC2</b> t4g.micro<br/>Amazon Linux 2023<br/>Nginx con TLS + API Node.js"]
+            end
+            subgraph priv["Subredes privadas · us-east-1a y us-east-1b"]
+                rds[("<b>Amazon RDS</b><br/>PostgreSQL 16, db.t4g.micro<br/>Una zona, cifrada")]
+            end
+        end
+        subgraph regionales["Servicios regionales"]
+            direction LR
+            ssm["<b>Systems Manager</b><br/>Session Manager · Run Command<br/>Parameter Store"]
+            s3["<b>Amazon S3</b><br/>Artefactos de despliegue"]
+            budgets["<b>AWS Budgets</b><br/>Alerta al 80 %<br/>y acción al 100 %"]
+        end
+    end
+
+    usuario -- "resuelve el dominio" --> dns
+    usuario -- "HTTPS, puerto 443" --> ec2
+    ec2 -- "SQL con TLS, puerto 5432" --> rds
+    ec2 -. "lee secretos y recibe comandos" .-> ssm
+    ec2 -. "descarga el artefacto" .-> s3
+    gh -- "OIDC: ordena el despliegue" --> ssm
+    gh -- "OIDC: sube el artefacto" --> s3
+    budgets -. "detiene EC2 y RDS" .-> ec2
+
+    classDef ext fill:#999999,stroke:#6b6b6b,color:#ffffff
+    classDef comp fill:#438dd5,stroke:#2e6295,color:#ffffff
+    classDef svc fill:#85bbf0,stroke:#5d82a8,color:#000000
+    class usuario,dns,gh ext
+    class ec2,rds comp
+    class ssm,s3,budgets svc
+    style fuera fill:none,stroke:none
+```
+
+Desde internet solo se llega al puerto 443 del servidor. La base de datos no tiene dirección pública. Ni la administración (Session Manager) ni el despliegue (GitHub Actions) abren puertos en la instancia.
+
+### 6.2 Recursos
+
+| Recurso | Configuración | Requisitos |
+|---|---|---|
+| Región | us-east-1 (Norte de Virginia). | NFR-23 · ADR 0004 |
+| Red (VPC) | `10.0.0.0/16`. Una subred pública (`10.0.1.0/24`, us-east-1a) con salida a internet. Dos subredes privadas sin ruta a internet: `10.0.11.0/24` en us-east-1a y `10.0.12.0/24` en us-east-1b. RDS exige subredes en dos zonas aunque la base de datos use una sola. Sin NAT Gateway. | NFR-09, NFR-23 |
+| Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. | NFR-09, NFR-17 · ADR 0002, 0004 |
+| Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos con 7 días de retención y recuperación a un punto en el tiempo. Protección contra borrado. Respaldo diario de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). | NFR-09, NFR-18 · ADR 0004 |
+| Secretos | Parameter Store, con parámetros `SecureString` bajo `/parkapp/prod/`. | NFR-10 · ADR 0006 |
+| Artefactos | Bucket S3 privado, con bloqueo de acceso público y cifrado. Los artefactos se borran a los 30 días. | ADR 0007 |
+| Dominio y DNS | Dominio en Cloudflare Registrar. Un registro A apunta a la IP elástica, sin el proxy de Cloudflare. | ADR 0005 |
+| Certificado TLS | Let's Encrypt con certbot y renovación automática. Solo TLS 1.2 y 1.3, con HSTS. | NFR-09 · ADR 0005 |
+| Presupuesto | AWS Budgets: 30 USD al mes, **sin incluir créditos**, porque con créditos el costo neto siempre da 0 y la alerta nunca se activaría. Alerta por correo al 80 % y, al 100 %, una acción automática que detiene EC2 y RDS. | NFR-23 |
+| Registro de actividad | Historial de eventos de CloudTrail: 90 días, sin costo. | — |
+
+### 6.3 Reglas de red
+
+| Grupo de seguridad | Entrada | Salida |
+|---|---|---|
+| `sg-web` (EC2) | 443/TCP desde cualquier origen. 80/TCP desde cualquier origen, solo para redirigir a HTTPS y para la validación de Let's Encrypt. **Ningún puerto de administración: no se abre el 22.** | 443/TCP hacia internet (actualizaciones, Systems Manager, S3 y Let's Encrypt). 5432/TCP solo hacia `sg-db`. |
+| `sg-db` (RDS) | 5432/TCP solo desde `sg-web`. | Ninguna. |
+
+El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan por los grupos de seguridad.
+
+**IP real del cliente.** Nginx agrega la IP del cliente en `X-Forwarded-For`, y Express solo confía en el proxy local (`trust proxy = loopback`). Así un cliente no puede falsificar su IP para evadir el límite de peticiones (NFR-08) ni para alterar lo que se registra en la bitácora (NFR-12).
+
+### 6.4 Identidades y permisos
+
+| Identidad | Puede | Restricción |
+|---|---|---|
+| Usuario raíz | Solo tareas de la cuenta (plan y facturación). | MFA y sin llaves de acceso. |
+| Administrador (persona) | Administrar la cuenta en el trabajo diario. | MFA obligatorio. Es distinto del usuario raíz. |
+| Rol del servidor EC2 | Conectarse a Systems Manager (`AmazonSSMManagedInstanceCore`), leer los parámetros de `/parkapp/prod/` y descargar del bucket de artefactos. | No puede modificar otros recursos de AWS. |
+| Rol de GitHub Actions | Subir al bucket de artefactos y ejecutar el documento `ParkApp-Deploy` en el servidor. | Solo lo puede asumir el repositorio `wrafael91/parkapp` desde la rama `main`, y con credenciales temporales (OIDC). |
+| Rol de AWS Budgets | Detener la instancia EC2 y la base de datos. | Solo sobre esos dos recursos. |
+
+### 6.5 Usuarios de la base de datos
+
+| Usuario | Uso | Permisos |
+|---|---|---|
+| Usuario maestro de RDS | Creación inicial y emergencias. | Todos. Su contraseña solo está en Parameter Store. |
+| `parkapp_migrator` | Aplicar las migraciones de Prisma durante el despliegue. | Dueño del esquema: crea y modifica tablas. |
+| `parkapp_app` | La API en operación normal. | Solo los que necesita cada tabla, sin crear ni modificar tablas. En la bitácora, únicamente consultar e insertar (NFR-12). |
+
+### 6.6 Flujo de despliegue
+
+1. Al fusionar un pull request en `main`, GitHub Actions ejecuta las pruebas, compila la aplicación web y empaqueta la API (NFR-19).
+2. Obtiene credenciales temporales de AWS mediante OIDC. En GitHub no se guarda ninguna llave de AWS (NFR-10).
+3. Sube el artefacto a S3, identificado con el hash del commit.
+4. Con SSM Run Command, ejecuta en el servidor el documento `ParkApp-Deploy`. Este descarga el artefacto, aplica las migraciones con `parkapp_migrator`, activa la nueva versión y reinicia el servicio.
+5. Verifica que `GET /api/salud` responda. Si falla, el documento vuelve a la versión anterior, que se conserva en el servidor.
+
+Las migraciones se diseñan compatibles con la versión anterior, para que volver atrás no obligue a deshacerlas. Antes de una migración que cambie tablas existentes, se toma una instantánea manual de la base de datos.
+
+### 6.7 Disponibilidad y respaldos
+
+- AWS compromete 99,5 % de disponibilidad para una instancia individual de EC2 y otro 99,5 % para una base de datos de RDS en una sola zona. Combinados dan cerca de 99,0 %, el mínimo de NFR-16. La disponibilidad real suele ser mayor; el riesgo principal son los propios despliegues y el mantenimiento, y por eso se programan de madrugada.
+- Si la API falla, systemd la reinicia en segundos (NFR-17).
+- Una restauración crea una nueva instancia de RDS desde un punto en el tiempo. Después se actualiza la dirección de la base de datos en `/parkapp/prod/` y se reinicia la API. El simulacro se hace y se documenta en el Sprint 3 (NFR-18).
+- El monitoreo externo con el que se mide NFR-16 se define en el Sprint 3.
+
+### 6.8 Costo
+
+| Recurso | USD al mes |
+|---|---|
+| EC2 `t4g.micro` y disco de 8 GB | 6,77 |
+| IP pública | 3,65 |
+| RDS `db.t4g.micro` y 20 GB | 13,98 |
+| Parameter Store, Systems Manager, OIDC, Budgets y CloudTrail | 0,00 |
+| S3 | menos de 0,01 |
+| **Total** | **24,40** |
+
+Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#/estimate?id=3c7ee30438426c32204b0e8a2516dfa7c770911f), en Norte de Virginia y con precios bajo demanda. Queda por debajo del límite de 30 USD de NFR-23. El dominio se paga aparte: 10,46 USD al año.
+
+**Cuenta y vigencia.** La cuenta usa el plan gratuito de AWS: 100 USD en créditos (hasta 200 con las actividades de inicio) durante 6 meses, sin cobros a la tarjeta. Cuando se agotan los créditos o se cumple el plazo, la cuenta se cierra. El despliegue se mantiene al menos hasta que se publique la nota final. Si hay que apagarlo antes, los recursos se eliminan en lugar de detenerse: un servidor detenido sigue pagando el disco y la IP, y RDS vuelve a encender sola una base de datos detenida a los 7 días.
+
+### 6.9 Opciones descartadas
+
+| Opción | Por qué no |
+|---|---|
+| RDS en varias zonas | Duplica el costo de la base de datos, y NFR-16 se cumple con una sola zona. |
+| Balanceador de carga | Tiene un costo fijo alto para una sola instancia (ADR 0002). |
+| NAT Gateway | Cuesta unos 33 USD al mes, y ningún recurso privado necesita salir a internet. |
+| AWS WAF | Cobra cada mes por reglas. AWS Shield Standard, incluido sin costo, protege contra los ataques de red más comunes, y el límite de peticiones de la API (NFR-08) cubre el resto del riesgo actual. |
+| Proxy de Cloudflare | Protegería contra ataques de denegación de servicio, pero cambia dónde termina TLS y cómo llega la IP del cliente. Queda como mejora futura. |
 
 ## 7. Decisiones de arquitectura
 
