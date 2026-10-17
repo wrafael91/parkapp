@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-03 (#4), S1-04 (#5) |
-| Versión | 1.1 — 10 de octubre de 2026 |
+| Versión | 1.2 — 16 de octubre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -131,10 +131,10 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 | NFR-06 | Toda entrada se valida en el servidor contra un esquema (tipo, formato y longitud), y el acceso a datos usa consultas parametrizadas. | Pruebas automatizadas con entradas inválidas | 2 |
 | NFR-07 | Los errores no exponen detalles internos al cliente (trazas, consultas SQL, versiones). El detalle queda solo en los registros del servidor. | Pruebas automatizadas | 2 |
 | NFR-08 | La API limita las peticiones por cliente (100 por minuto por IP en general, con un límite más estricto en el inicio de sesión) y responde 429 al superarlo. | Prueba automatizada | 2 |
-| NFR-09 | La comunicación usa exclusivamente HTTPS (TLS 1.2 o superior), y la base de datos y sus respaldos están cifrados en reposo. | Revisión de configuración y escaneo TLS | 3 |
+| NFR-09 | La comunicación usa exclusivamente HTTPS (TLS 1.2 o superior), y la base de datos y sus respaldos están cifrados en reposo. | Revisión de configuración y escaneo TLS | 2 |
 | NFR-10 | Ningún secreto (contraseñas, llaves o tokens) está en el repositorio. En AWS, los secretos se gestionan con un servicio de secretos, y GitHub tiene activado el escaneo de secretos. | Escaneo de secretos y revisión | 1 a 3 |
 | NFR-11 | Al cierre de cada sprint, las dependencias no tienen vulnerabilidades conocidas de severidad alta o crítica. | npm audit y Dependabot | 1 a 3 |
-| NFR-12 | La bitácora de auditoría es de solo inserción: nadie puede modificarla ni borrarla desde la aplicación. Cada evento registra quién, qué, cuándo y desde qué IP. | Pruebas de integridad en la base de datos | 1 |
+| NFR-12 | La bitácora de auditoría es de solo inserción: nadie puede modificarla ni borrarla desde la aplicación. Cada evento registra quién, qué, cuándo y desde qué IP. | Pruebas de integridad en la base de datos | 2 |
 
 ### 3.2 Eficiencia de desempeño
 
@@ -156,7 +156,7 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 
 | ID | Requisito | Verificación | Sprint |
 |---|---|---|---|
-| NFR-19 | Todo cambio entra a `main` por pull request con la integración continua en verde. | Protección de rama | 1 a 3 |
+| NFR-19 | Todo cambio entra a main por pull request; desde el Sprint 2, además, con la integración continua en verde. | Protección de rama e integración continua | 1 a 3 |
 | NFR-20 | Cada ejemplo de la sección 5 de las reglas de negocio es una prueba automatizada, y la lógica de negocio tiene al menos 80 % de cobertura de líneas. | Reporte de cobertura en CI | 2 |
 
 ### 3.5 Capacidad de interacción
@@ -170,31 +170,29 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 
 | ID | Requisito | Verificación | Sprint |
 |---|---|---|---|
-| NFR-23 | El costo mensual de la infraestructura en AWS no supera USD 30. AWS Budgets alerta al 80 % y ejecuta una acción automática al 100 %. | Reportes de AWS Budgets | 3 |
+| NFR-23 | El costo mensual de la infraestructura en AWS no supera USD 30. AWS Budgets alerta al 80 % y ejecuta una acción automática al 100 %. | Reportes de AWS Budgets | 2 y 3 |
 
 ## 4. Historias de usuario
 
 Formato: "Como… quiero… para…", con criterios de aceptación "Dado… cuando…
-entonces…". Priorización MoSCoW: las historias Must se desarrollan en el
-Sprint 2 (objetivo específico 2) y las Should en el Sprint 3. Los elementos de
-la sección 7 de las reglas de negocio son Won't en esta versión.
+entonces…". Priorización MoSCoW. Las historias Must del núcleo del registro y la facturación se entregan desplegadas en el Sprint 2; las demás Must y las Should se desarrollan en el Sprint 3. Mientras tanto, las cuentas se crean con el script de arranque y el periodo de gracia queda con un valor inicial.
 
 ### 4.1 Resumen
 
 | ID | Historia | Requisitos | Prioridad | Sprint |
 |---|---|---|---|---|
 | US-01 | Iniciar y cerrar sesión | FR-01, FR-02 | Must | 2 |
-| US-02 | Crear cuentas de operador | FR-03 | Must | 2 |
-| US-03 | Desactivar y reactivar cuentas | FR-04 | Must | 2 |
+| US-02 | Crear cuentas de operador | FR-03 | Must | 3 |
+| US-03 | Desactivar y reactivar cuentas | FR-04 | Must | 3 |
 | US-04 | Restablecer la contraseña de un operador | FR-05 | Should | 3 |
 | US-05 | Cambiar mi contraseña | FR-06 | Should | 3 |
 | US-06 | Registrar el ingreso de un vehículo | FR-07, FR-08, FR-09 | Must | 2 |
 | US-07 | Ver los vehículos que están dentro y buscar por placa | FR-10, FR-11 | Must | 2 |
 | US-08 | Registrar la salida y calcular el cobro | FR-12, FR-13 | Must | 2 |
 | US-09 | Emitir el comprobante de pago | FR-14 | Must | 2 |
-| US-10 | Anular una estadía | FR-15 | Must | 2 |
+| US-10 | Anular una estadía | FR-15 | Must | 3 |
 | US-11 | Configurar la tarifa por minuto | FR-16 | Must | 2 |
-| US-12 | Configurar el periodo de gracia | FR-17 | Must | 2 |
+| US-12 | Configurar el periodo de gracia | FR-17 | Must | 3 |
 | US-13 | Consultar el historial | FR-18 | Should | 3 |
 | US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
 | US-15 | Ver el resumen de recaudo | FR-20 | Should | 3 |
@@ -338,10 +336,10 @@ cuadrar caja con lo que entrega cada operador.
 
 | Objetivo específico | Se cumple con | Requisitos relacionados |
 |---|---|---|
-| OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos, arquitectura y modelo de amenazas (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
-| OE2. Desarrollar los módulos de registro y facturación | Historias Must (Sprint 2) y Should (Sprint 3) | FR-01 a FR-20; NFR-01 a NFR-08, NFR-20 |
-| OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 3) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
-| OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad y restauración (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
+| OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos y arquitectura (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
+| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-20; NFR-01 a NFR-08, NFR-20 |
+| OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 2) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
+| OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
 
 ### 5.2 Requisitos funcionales
 
@@ -389,6 +387,7 @@ guidelines: Authentication and authenticator management* (NIST Special
 |---|---|---|
 | 1.0 | 8 de octubre de 2026 | Versión inicial |
 | 1.1 | 10 de octubre de 2026 | Toda contraseña asignada por otra persona debe cambiarse en el primer inicio de sesión (sección 1.3, FR-03, FR-05, US-02 y US-04). Los ingresos rechazados por placa con estadía activa y los accesos denegados quedan en la bitácora (FR-09, FR-19 y US-06). Hallazgos del modelo de datos, S1-04. |
+| 1.2 | 16 de octubre de 2026 | Sprints alineados con el plan de 3 sprints: US-02, US-03, US-10 y US-12 pasan al Sprint 3; NFR-09, NFR-12 y NFR-23 se verifican desde el Sprint 2; NFR-19 aclara que la integración continua aplica desde el Sprint 2. |
 Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
