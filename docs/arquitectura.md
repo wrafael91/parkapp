@@ -109,28 +109,29 @@ flowchart TB
 
         subgraph modulos["Módulos de dominio"]
             direction LR
-            cuentas["<b>Cuentas y sesión</b><br/>Inicio y cierre de sesión,<br/>cuentas y contraseñas"]
-            estadias["<b>Estadías</b><br/>Ingreso, salida, comprobante,<br/>anulación y consultas"]
             config["<b>Configuración</b><br/>Tarifas, periodo de gracia<br/>y topes legales"]
+            estadias["<b>Estadías</b><br/>Ingreso, salida, comprobante,<br/>anulación y consultas"]
+            cuentas["<b>Cuentas y sesión</b><br/>Inicio y cierre de sesión,<br/>cuentas y contraseñas"]
             auditoria["<b>Auditoría</b><br/>Registro y consulta<br/>de eventos"]
         end
 
-        calculo["<b>Cálculo del cobro</b><br/>Función pura de dominio"]
-        errores["<b>Manejador de errores</b><br/>Respuestas sin detalles internos"]
-        repos["<b>Acceso a datos</b><br/>[Prisma]"]
+        subgraph soporte["Componentes de soporte"]
+            direction LR
+            calculo["<b>Cálculo del cobro</b><br/>Función pura de dominio"]
+            repos["<b>Acceso a datos</b><br/>[Prisma]"]
+            errores["<b>Manejador de errores</b><br/>Respuestas sin detalles internos"]
+        end
     end
 
     db[("<b>Base de datos</b><br/>[PostgreSQL]")]
 
     spa -- "JSON, /api" --> mw
     mw --> modulos
-    estadias --> calculo
-    cuentas -. "registra eventos" .-> auditoria
-    estadias -. "registra eventos" .-> auditoria
     config -. "registra eventos" .-> auditoria
-    modulos --> repos
+    estadias -. "registra eventos" .-> auditoria
+    cuentas -. "registra eventos" .-> auditoria
+    modulos -- "usan" --> soporte
     repos -- "SQL con TLS" --> db
-    modulos -. "errores" .-> errores
 
     classDef ext fill:#438dd5,stroke:#2e6295,color:#ffffff
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000000
@@ -169,23 +170,20 @@ sequenceDiagram
     autonumber
     actor Op as Operador
     participant MW as Middleware
-    participant S as Estadías: servicio
+    participant S as Servicio de estadías
     participant C as Cálculo del cobro
-    participant R as Acceso a datos
-    participant DB as PostgreSQL
-
-    Op->>MW: POST /api/estadias/{id}/salida (cookie de sesión)
-    MW->>MW: Verifica Origin, sesión, rol y esquema
+    participant DB as Base de datos
+    Op->>MW: POST /api/estadias/{id}/salida
+    MW->>MW: Origin, sesión, rol y esquema
     MW->>S: registrarSalida(id, usuario)
-    S->>R: Inicia la transacción
-    R->>DB: Bloquea la estadía y lee su tarifa y su periodo de gracia
-    R->>DB: Toma la hora actual de la base de datos (BR-16)
+    S->>DB: Inicia transacción
+    S->>DB: Bloquea la estadía y lee tarifa y gracia
+    S->>DB: Toma la hora actual (BR-16)
     S->>C: calcular(ingreso, salida, tarifa, gracia)
-    C-->>S: Minutos completos, subtotal, ajuste y total
-    S->>R: Cierra la estadía, crea el comprobante y registra el evento
-    R->>DB: Confirma la transacción (RI-11)
-    S-->>MW: Comprobante
-    MW-->>Op: 201 Created y comprobante
+    C-->>S: Minutos, subtotal, ajuste y total
+    S->>DB: Cierra estadía, crea comprobante y evento
+    S->>DB: Confirma la transacción (RI-11)
+    S-->>Op: 201 Created y comprobante
 ```
 
 La hora de salida es la de la base de datos, nunca la que envía el cliente
