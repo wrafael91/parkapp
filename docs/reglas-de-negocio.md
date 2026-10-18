@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5) |
-| Versión | 1.3 — 13 de octubre de 2026 |
+| Versión | 1.4 — 17 de octubre de 2026 |
 
 ## 1. Propósito
 
@@ -104,10 +104,10 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
 
 ## 6. Supuestos e interpretaciones
 
-- **BR-06:** la norma no regula los segundos. Se cobra solo el minuto completo
-  por coherencia con el criterio de redondeo en favor del consumidor de la
-  Superintendencia de Industria y Comercio (Concepto 17-69998 de 2017), que
-  el Decreto 026 de 2026 cita como fundamento del redondeo hacia abajo.
+- **BR-06:** la norma no regula los segundos. Se cobra solo el minuto completo por 
+  coherencia con el criterio de redondeo en favor del consumidor de la Superintendencia de 
+  Industria y Comercio (2017), que el Decreto 026 de 2026 cita en sus considerandos como
+  motivación para el redondeo hacia abajo.
 - **BR-08:** la norma permite esquemas más económicos que el cobro por minuto,
   pero no regula el periodo de gracia. Se adopta la práctica común: la gracia
   funciona como umbral, no como descuento. Por coherencia con BR-06, el umbral
@@ -124,6 +124,7 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
 | Reporte al Registro Distrital de Estacionamientos | Obligación administrativa del operador. |
 | Publicación física de tarifas en el establecimiento | Obligación del operador (Decreto 652/2025, art. 200, par. 5). |
 | Placas extranjeras y diplomáticas | El registro valida el formato de placa colombiana (FR-08). |
+| Registro del medio de pago (efectivo o tarjeta) | ParkApp calcula y registra el valor a cobrar, pero no procesa pagos: el pago se recibe fuera del sistema. El resumen de recaudo (FR-20) totaliza por operador sin distinguir el medio de pago. Queda en el backlog del producto. |
 | Recuperación de contraseña por correo | Requiere un servicio de correo y amplía la superficie de ataque. El administrador restablece las contraseñas (FR-05). |
 
 ## 8. Glosario
@@ -178,6 +179,9 @@ Concejo de Bogotá. (2008). *Acuerdo 356 de 2008, por medio del cual se adoptan
 medidas para el cobro de estacionamiento de vehículos fuera de vía*.
 https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=34306
 
+Superintendencia de Industria y Comercio. (2017, 4 de mayo). *Concepto 17 69998 del 4 de mayo de 2017*. 
+https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del-4-de-mayo-de-2017
+
 ## 10. Historial de cambios
 
 | Versión | Fecha | Cambio |
@@ -186,3 +190,4 @@ https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=34306
 | 1.1 | 6 de octubre de 2026 | Se agregan BR-15 (tope legal fuera del alcance del administrador) y BR-16 (horas asignadas por el servidor); se ajusta BR-10 |
 | 1.2 | 6 de octubre de 2026 | BR-11 se extiende al periodo de gracia, que también se congela al ingreso (hallazgo del análisis de requisitos, S1-03); se agregan dos elementos fuera de alcance |
 | 1.3 | 13 de octubre de 2026 | Se amplía el glosario con los términos del modelo de datos (S1-04) |
+| 1.4 | 17 de octubre de 2026 | BR-06: redacción ajustada a lo verificable en el Decreto 026 de 2026. Referencia oficial del Concepto 17-69998 de la SIC. Registro del medio de pago declarado fuera del alcance. |
