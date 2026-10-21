@@ -80,7 +80,10 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 |---|---|---|
 | BR-12 | Ningún registro de ingreso, salida o cobro se borra. Un registro equivocado se anula indicando motivo, usuario y fecha. | Decisión de diseño |
 | BR-13 | La pérdida del tiquete no genera recargo. La salida se busca por placa y aplica BR-04. Verificar los documentos del propietario es un procedimiento del operador, fuera del sistema. | Decisión de diseño |
-| BR-16 | Las fechas y horas de ingreso, salida y anulación las asigna el servidor. El sistema no acepta horas enviadas por el cliente. | Decisión de diseño (prevención de fraude) |
+| BR-16 | Las fechas y horas de ingreso, salida y anulación las asigna el servidor. El sistema no acepta horas enviadas por el cliente, y una corrección solo copia horas que el servidor ya registró (BR-17). | Decisión de diseño (prevención de fraude) |
+| BR-17 | Una estadía con datos equivocados (placa, tipo de vehículo, color o marca) se corrige por reemplazo: el administrador la anula y el sistema crea, en la misma operación, una estadía de reemplazo vinculada a la anulada, con los datos corregidos y las mismas horas que el servidor registró. Si la salida se registró al vehículo equivocado, la estadía cerrada por error se reemplaza por una activa y la del vehículo que realmente salió se cierra con la hora de esa salida. Si cambia el cobro, el reemplazo recibe un comprobante nuevo, y la diferencia con lo ya cobrado se resuelve fuera del sistema. | Decisión de diseño (prevención de errores de cobro) |
+
+BR-17 responde a los errores de digitación: corregir una placa, un tipo de vehículo o una salida equivocada no pierde la hora real de ingreso, y por eso no altera el cobro. Por ejemplo, si a las 8:02 se registra la placa ABC128 en lugar de ABC123 y el error se corrige a las 10:00, el reemplazo conserva el ingreso de las 8:02; si el carro sale a las 10:30, se cobran 148 minutos y no 30.
 
 ### 4.5 Comprobante de pago
 
@@ -165,6 +168,8 @@ el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 | Evento de auditoría | `auditEvent` |
 | Acción de auditoría | `auditAction` |
 | Bitácora de auditoría | `AuditEvent` (el conjunto de eventos) |
+| Corregir (*correct*) | Anular una estadía con datos equivocados y crear su reemplazo en la misma operación (BR-17). |
+| Reemplazo (*replacement*) | Estadía creada al corregir otra. Apunta a la estadía anulada (`replacesId`) y conserva las horas que el servidor registró en ella (BR-17). |
 
 ## 9. Referencias
 
@@ -191,3 +196,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.2 | 6 de octubre de 2026 | BR-11 se extiende al periodo de gracia, que también se congela al ingreso (hallazgo del análisis de requisitos, S1-03); se agregan dos elementos fuera de alcance |
 | 1.3 | 13 de octubre de 2026 | Se amplía el glosario con los términos del modelo de datos (S1-04) |
 | 1.4 | 17 de octubre de 2026 | BR-06: redacción ajustada a lo verificable en el Decreto 026 de 2026. Referencia oficial del Concepto 17-69998 de la SIC. Registro del medio de pago declarado fuera del alcance. |
+| 1.5 | 20 de octubre de 2026 | BR-17: corrección de estadías por reemplazo, con las horas registradas por el servidor. BR-16 aclara que una corrección solo copia horas ya registradas. Glosario: corregir y reemplazo. |
