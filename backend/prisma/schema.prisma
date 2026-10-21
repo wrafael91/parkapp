@@ -1,5 +1,5 @@
 // ParkApp — modelo físico de datos.
-// Diseño lógico y reglas de integridad (RI-01 a RI-16): docs/modelo-datos.md
+// Diseño lógico y reglas de integridad (RI-01 a RI-19): docs/modelo-datos.md
 
 generator client {
   provider = "prisma-client"
@@ -40,6 +40,7 @@ enum AuditAction {
   ENTRY_REJECTED_ACTIVE_PLATE @map("INGRESO_RECHAZADO_PLACA_ACTIVA")
   EXIT_REGISTERED             @map("SALIDA_REGISTRADA")
   STAY_VOIDED                 @map("ESTADIA_ANULADA")
+  STAY_CORRECTED              @map("ESTADIA_CORREGIDA")
   RATE_CHANGED                @map("TARIFA_CAMBIADA")
   GRACE_PERIOD_CHANGED        @map("PERIODO_GRACIA_CAMBIADO")
   ACCOUNT_CREATED             @map("CUENTA_CREADA")
@@ -151,6 +152,7 @@ model Stay {
   voidedAt      DateTime?   @map("anulada_en") @db.Timestamptz(3)
   voidedById    Int?        @map("anulada_por_id")
   voidReason    String?     @map("motivo_anulacion")
+  replacesId    Int?        @unique @map("reemplaza_a_id")
 
   entryBy     User        @relation("StayEntryBy", fields: [entryById], references: [id], onDelete: Restrict)
   exitBy      User?       @relation("StayExitBy", fields: [exitById], references: [id], onDelete: Restrict)
@@ -158,6 +160,8 @@ model Stay {
   rate        Rate        @relation(fields: [rateId], references: [id], onDelete: Restrict)
   gracePeriod GracePeriod @relation(fields: [gracePeriodId], references: [id], onDelete: Restrict)
   receipt     Receipt?
+  replaces    Stay?       @relation("StayReplacement", fields: [replacesId], references: [id], onDelete: Restrict)
+  replacedBy  Stay?       @relation("StayReplacement")
 
   @@index([entryById])
   @@index([exitById])

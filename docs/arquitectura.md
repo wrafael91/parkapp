@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-06 (#7) |
-| Versión | 1.0 — 17 de octubre de 2026 |
+| Versión | 1.1 — 20 de octubre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -20,7 +20,7 @@ importantes se registran como ADR (registros de decisiones de arquitectura) en
 | Horas asignadas por el servidor (BR-16) | Toda regla de negocio y todo cálculo ocurren en el backend; el frontend solo presenta. |
 | Autorización y validación en el servidor (NFR-05, NFR-06) | La API no confía en el cliente: verifica el rol y valida cada entrada. |
 | Solo HTTPS (NFR-09) | El sistema termina TLS en su borde de entrada. |
-| Integridad y trazabilidad (RI-01 a RI-18, NFR-12) | Las reglas críticas se cumplen en la base de datos, además de en la API. |
+| Integridad y trazabilidad (RI-01 a RI-19, NFR-12) | Las reglas críticas se cumplen en la base de datos, además de en la API. |
 | Disponibilidad del 99 % (NFR-16) | Reinicio automático y respaldos; no se requiere alta disponibilidad en varias zonas. |
 | Costo máximo de USD 30 al mes (NFR-23) | Pocos servicios administrados, y de bajo costo. |
 
@@ -73,7 +73,7 @@ flowchart TB
         proxy["<b>Proxy inverso</b><br/>[Nginx]<br/>Termina TLS, sirve la aplicación web<br/>y reenvía /api a la API"]
         spa["<b>Aplicación web</b><br/>[React, SPA en el navegador]<br/>Formularios y consultas,<br/>sin reglas de negocio"]
         api["<b>API REST</b><br/>[Node.js, Express, Prisma]<br/>Reglas de negocio, cálculo del cobro,<br/>sesiones, roles, validación y auditoría"]
-        db[("<b>Base de datos</b><br/>[PostgreSQL 16]<br/>Datos, restricciones RI-01 a RI-18<br/>y bitácora de auditoría")]
+        db[("<b>Base de datos</b><br/>[PostgreSQL 16]<br/>Datos, restricciones RI-01 a RI-19<br/>y bitácora de auditoría")]
     end
 
     usuario -- "Abre la aplicación, por HTTPS" --> proxy
@@ -145,7 +145,7 @@ flowchart TB
 |---|---|---|
 | Cadena de middleware | Procesa cada petición, en este orden: encabezados de seguridad; límite de peticiones; verificación del encabezado `Origin` en las peticiones que modifican datos; sesión (busca el hash del token, verifica que no esté revocada ni expirada y actualiza la última actividad); cambio obligatorio de contraseña (si el usuario debe cambiarla, solo se le permite eso); rol, según la matriz de permisos, respondiendo 403 y registrando `ACCESO_DENEGADO`; y validación de la entrada contra un esquema. | NFR-04, NFR-05, NFR-06, NFR-08, RI-16; ADR 0003 |
 | Cuentas y sesión | Inicio y cierre de sesión, creación, desactivación y reactivación de cuentas, y cambio y restablecimiento de contraseñas. | FR-01 a FR-06 |
-| Estadías | Ingreso, salida con su comprobante, anulación, consulta de vehículos dentro, búsqueda por placa, historial y resumen de recaudo. | FR-07 a FR-15, FR-18, FR-20 |
+| Estadías | Ingreso, salida con su comprobante, anulación, corrección por reemplazo, consulta de vehículos dentro, búsqueda por placa, historial y resumen de recaudo. | FR-07 a FR-15, FR-18, FR-20 a FR-22 |
 | Configuración | Versiones de tarifa y de periodo de gracia. Los topes legales son de solo lectura (BR-15). | FR-16, FR-17 |
 | Auditoría | Registra los eventos que le envían los demás módulos y permite consultarlos. Los eventos de una acción exitosa se registran en la misma transacción de la acción. Los de una acción rechazada (inicio de sesión fallido, acceso denegado o ingreso rechazado) se registran aparte, para que queden aunque la acción no ocurra. | FR-19, NFR-12 |
 | Cálculo del cobro | Función pura: recibe la hora de ingreso, la hora de salida, la tarifa y el periodo de gracia, y devuelve los minutos completos, el subtotal, el ajuste y el total. No accede a la base de datos ni al reloj del sistema. | BR-05 a BR-08, NFR-20 |
@@ -378,3 +378,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 |---|---|---|
 | 0.1 | 14 de octubre de 2026 | Secciones 1 a 5 y 7; ADR 0001 a 0003. |
 | 1.0 | 17 de octubre de 2026 | Sección 6, despliegue en AWS; ADR 0004 a 0007; diagramas de componentes y de la salida simplificados. |
+| 1.1 | 20 de octubre de 2026 | El componente Estadías incluye la corrección por reemplazo (FR-21, FR-22); rango de reglas de integridad hasta RI-19. |
