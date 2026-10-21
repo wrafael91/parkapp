@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-04 (#5) |
-| Versión | 1.0 — 13 de octubre de 2026 |
+| Versión | 1.1 — 20 de octubre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -15,14 +15,14 @@ claves y restricciones) y físico (esquema de Prisma sobre PostgreSQL).
 
 ### 1.1 Entidades
 
-| Entidad | Qué representa | Requisitos |
+| Entidad | Qué representa | Origen |
 |---|---|---|
 | Usuario | Persona que usa el sistema, con rol de operador o administrador. Se desactiva, nunca se borra. | FR-01 a FR-06 |
 | Sesión | Sesión abierta de un usuario. Permite expirarla y revocarla de inmediato. | FR-01, FR-02, NFR-04 |
 | Tope legal | Valor máximo por minuto aplicable al parqueadero, por tipo de vehículo, con la norma que lo origina. Solo cambia por migración. | BR-10, BR-15, FR-16 |
 | Tarifa | Valor por minuto que cobra el parqueadero, por tipo de vehículo. Cada cambio crea una versión nueva. | BR-09, BR-10, BR-11, FR-16 |
 | Periodo de gracia | Minutos iniciales sin cobro. Cada cambio crea una versión nueva. | BR-08, BR-11, FR-17 |
-| Estadía | Paso de un vehículo por el parqueadero: datos del vehículo observados al ingreso, ingreso, salida y, si aplica, anulación. | BR-01 a BR-04, BR-11 a BR-13, BR-16; FR-07 a FR-12, FR-15 |
+| Estadía | Paso de un vehículo por el parqueadero: datos del vehículo observados al ingreso, ingreso, salida y, si aplica, anulación. | BR-01 a BR-04, BR-11 a BR-13, BR-16, BR-17; FR-07 a FR-12, FR-15, FR-21, FR-22 |
 | Comprobante | Constancia del cobro de una estadía cerrada, con los valores aplicados. | BR-05 a BR-07, BR-14; FR-13, FR-14 |
 | Evento de auditoría | Registro inmutable de una acción: quién, qué, cuándo y desde qué IP. | FR-19, NFR-03, NFR-05, NFR-12 |
 
@@ -44,6 +44,7 @@ erDiagram
     TARIFA ||--o{ ESTADIA : "se aplica a"
     PERIODO_GRACIA ||--o{ ESTADIA : "se aplica a"
     ESTADIA ||--o| COMPROBANTE : "genera"
+    ESTADIA |o--o| ESTADIA : "reemplaza a"
 ```
 
 ### 1.3 Decisiones de modelado
@@ -72,6 +73,7 @@ erDiagram
 5. **La anulación es parte de la estadía.** Anular una estadía anula también su
    comprobante, si lo tiene (FR-15). Una estadía activa también se puede anular
    si se registró por error.
+6. **Una corrección crea un reemplazo, no edita.** Corregir una placa, un tipo de vehículo o una salida equivocada anula la estadía errada y crea otra que la  reemplaza y apunta a ella. El reemplazo copia las horas que el servidor registró en la anulada, de modo que la corrección no pierde la hora real de ingreso ni permite digitar horas (BR-16, BR-17). La estadía anulada queda intacta como evidencia (RI-04).
 
 ## 2. Modelo lógico
 
@@ -153,6 +155,7 @@ erDiagram
         timestamptz anulada_en "nulo si no se anuló"
         int anulada_por_id FK "nulo si no se anuló"
         text motivo_anulacion "nulo si no se anuló"
+        int reemplaza_a_id FK, UK "nula si no es un reemplazo"
     }
     COMPROBANTE {
         int id PK
@@ -184,6 +187,7 @@ erDiagram
     TARIFA ||--o{ ESTADIA : "se aplica a"
     PERIODO_GRACIA ||--o{ ESTADIA : "se aplica a"
     ESTADIA ||--o| COMPROBANTE : "genera"
+    ESTADIA |o--o| ESTADIA : "reemplaza a"
 ```
 
 ### 2.3 Reglas de integridad
@@ -196,7 +200,7 @@ en S1-05.
 | RI-01 | La placa se guarda en mayúsculas, sin espacios ni guiones, con el formato de su tipo: tres letras y tres números para carro; tres letras, dos números y una letra para moto. | BR-02, FR-08 |
 | RI-02 | Una placa tiene como máximo una estadía activa. | BR-03, FR-09 |
 | RI-03 | El estado de la estadía es coherente con sus datos: una activa no tiene salida; una cerrada tiene hora y usuario de salida; una anulada tiene fecha, usuario y motivo de anulación. | BR-12, FR-15 |
-| RI-04 | Las únicas transiciones de estado válidas son de activa a cerrada, de activa a anulada y de cerrada a anulada. Una estadía anulada no cambia. | BR-12 |
+| RI-04 | Las únicas transiciones de estado válidas son de activa a cerrada, de activa a anulada y de cerrada a anulada. Una estadía anulada no cambia: si sus datos estaban equivocados, se corrige con una estadía de reemplazo (RI-19).| BR-12 |
 | RI-05 | La hora de salida no es anterior a la de ingreso. | BR-16 |
 | RI-06 | La tarifa de la estadía corresponde a su tipo de vehículo. La tarifa y el periodo de gracia son los vigentes al momento del ingreso. | BR-11 |
 | RI-07 | Hay como máximo una versión vigente de tarifa y de tope legal por tipo de vehículo, y una de periodo de gracia. En toda versión, `vigente_hasta` es posterior a `vigente_desde`. | BR-11, BR-15 |
@@ -211,6 +215,7 @@ en S1-05.
 | RI-16 | Toda contraseña asignada por otra persona (cuenta nueva, restablecimiento o script de arranque) debe cambiarse en el primer inicio de sesión. | FR-03, FR-05; requisitos, sección 1.3 |
 | RI-17 | En la bitácora, `entidad` y `entidad_id` van juntos: ambos tienen valor o ambos son nulos. | NFR-12; catálogo de la sección 4.1 |
 | RI-18 | En la bitácora, la IP solo puede ser nula si el evento no tiene usuario, como en la creación del primer administrador con el script de despliegue. | NFR-12; catálogo de la sección 4.1 |
+| RI-19 | Una estadía de reemplazo apunta a una estadía anulada distinta de sí misma, cada estadía anulada tiene como máximo un reemplazo, y el reemplazo conserva la hora de ingreso de la anulada. | BR-16, BR-17 |
 
 ### 2.4 Decisiones del modelo lógico
 
@@ -291,6 +296,7 @@ fallido, porque un usuario puede escribir por error su contraseña en ese campo
 | INGRESO_RECHAZADO_PLACA_ACTIVA | ENTRY_REJECTED_ACTIVE_PLATE | Ingreso rechazado porque la placa ya tiene una estadía activa (posible placa clonada). | BR-03, FR-09, FR-19 | estadia (la activa) | `tipo_vehiculo`, `color` y `marca` del vehículo rechazado | Operador o administrador |
 | SALIDA_REGISTRADA | EXIT_REGISTERED | Salida de un vehículo y emisión de su comprobante, en la misma transacción (RI-11). | FR-12, FR-13, FR-14, FR-19 | estadia | — | Operador o administrador |
 | ESTADIA_ANULADA | STAY_VOIDED | Anulación de una estadía y, si lo tiene, de su comprobante. | BR-12, FR-15, FR-19 | estadia | — (el motivo queda en la estadía) | Administrador |
+| `ESTADIA_CORREGIDA` | `STAY_CORRECTED` | Corrección por reemplazo: anulación de la estadía equivocada y creación de su reemplazo, en la misma transacción. | BR-17, FR-19, FR-21, FR-22 | estadia (el reemplazo) | en una corrección de salida, el id de la estadía que se cerró con la hora de esa salida | Administrador |
 | TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador |
 | PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador |
 | CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
@@ -402,6 +408,7 @@ su regla RI.
 | anulada_en | `voidedAt` | TIMESTAMPTZ(3) | No | — | — | Hora del servidor de la anulación. |
 | anulada_por_id | `voidedById` | INTEGER | No | — | FK → usuario | Administrador que anuló la estadía. |
 | motivo_anulacion | `voidReason` | TEXT | No | — | — | Motivo de la anulación, obligatorio si el estado es ANULADA (RI-03). |
+| reemplaza_a_id | `replacesId` | INTEGER | No | — | FK → estadia, UK | Estadía anulada que esta reemplaza; nula si no es un reemplazo (BR-17, RI-19). |
 
 #### comprobante (`Receipt`)
 
@@ -420,7 +427,7 @@ su regla RI.
 | Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
 |---|---|---|---|---|---|---|
 | id | `id` | BIGINT | Sí | autoincremental | PK | Identificador del evento. |
-| accion | `action` | accion_auditoria | Sí | — | — | Una de las 14 acciones del catálogo (sección 4.1). |
+| accion | `action` | accion_auditoria | Sí | — | — | Una de las 15 acciones del catálogo (sección 4.1). |
 | usuario_id | `userId` | INTEGER | No | — | FK → usuario | Quien actúa; nulo si nadie se autenticó. |
 | entidad | `entity` | TEXT | No | — | — | Tabla afectada; nula si el evento no afecta una entidad (RI-17). |
 | entidad_id | `entityId` | INTEGER | No | — | — | Registro afectado; nulo si y solo si `entidad` es nula (RI-17). |
@@ -439,7 +446,7 @@ su regla RI.
 | estado_estadia | ACTIVA | `ACTIVE` |
 | estado_estadia | CERRADA | `CLOSED` |
 | estado_estadia | ANULADA | `VOIDED` |
-| accion_auditoria | 14 valores | Ver la sección 4.1 |
+| accion_auditoria | 15 valores | Ver la sección 4.1 |
 
 ### 4.4 Índices
 
@@ -449,6 +456,7 @@ su regla RI.
 | sesion | token_hash (único) | Buscar la sesión de cada petición (NFR-04). |
 | sesion | usuario_id | Revocar las sesiones de un usuario (NFR-04). |
 | comprobante | consecutivo (único); estadia_id (único) | Numeración y un comprobante por estadía (RI-11). |
+| estadia | reemplaza_a_id (único) | Un reemplazo como máximo por cada estadía anulada (RI-19). |
 | tarifa, periodo_gracia y estadia | Cada clave foránea | Consultas por usuario, tarifa y periodo de gracia, como el filtro por operador del historial (FR-18) y el resumen de recaudo (FR-20). |
 | evento_auditoria | usuario_id | Consultar los eventos de un usuario (FR-19). |
 | evento_auditoria | (accion, entidad, entidad_id, ocurrido_en) | Contar los intentos fallidos de una cuenta en los últimos 15 minutos (NFR-03). |
@@ -456,3 +464,10 @@ su regla RI.
 Los índices para los demás filtros del historial (fechas y placa, FR-18) se
 definen en el Sprint 3 con las pruebas de carga de NFR-14, para decidirlos con
 mediciones y no por suposición.
+
+## Historial de cambios
+
+| Versión | Fecha | Cambios |
+|---|---|---|
+| 1.0 | 13 de octubre de 2026 | Modelo conceptual, lógico y físico; RI-01 a RI-18; diccionario de datos, catálogo de auditoría, tipos enumerados e índices. |
+| 1.1 | 20 de octubre de 2026 | Corrección por reemplazo (BR-17): columna `reemplaza_a_id`, relación de la estadía consigo misma en ambos diagramas, RI-19 y acción `ESTADIA_CORREGIDA` (15 acciones). La columna de la tabla de entidades pasa a llamarse Origen. |
