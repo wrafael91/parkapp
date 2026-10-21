@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5) |
-| Versión | 1.2 — 16 de octubre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25 |
+| Versión | 1.3 — 20 de octubre de 2026|
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -30,6 +30,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Buscar una estadía activa por placa | ✓ | ✓ | BR-13 |
 | Ver los vehículos que están dentro | ✓ | ✓ | — |
 | Anular un registro o comprobante | ✗ | ✓ | BR-12 |
+| Corregir una estadía por reemplazo | No | Sí | BR-12, BR-16, BR-17 |
 | Configurar la tarifa por tipo de vehículo | ✗ | ✓ | BR-09, BR-10, BR-11 |
 | Configurar el periodo de gracia | ✗ | ✓ | BR-08, BR-11 |
 | Crear y desactivar cuentas de operador | ✗ | ✓ | — |
@@ -62,12 +63,14 @@ automatizada en la que la API responde 403.
    
 ## 2. Requisitos funcionales
 
+La columna Origen indica de dónde proviene cada requisito: una sección de este documento (por ejemplo, la 1.3, de control de acceso), una regla de negocio o un requisito no funcional. «Necesidad operativa» señala los que responden directamente a una tarea del operador, sin una regla que los exija.
+
 ### 2.1 Cuentas y sesión
 
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
 | FR-01 | El sistema permite iniciar sesión con correo y contraseña. Una cuenta desactivada no puede iniciar sesión. | Ambos | Sección 1.3 |
-| FR-02 | El sistema permite cerrar sesión. | Ambos | — |
+| FR-02 | El sistema permite cerrar sesión. | Ambos | NFR-04 |
 | FR-03 | El administrador crea cuentas de operador con una contraseña inicial, que el operador debe cambiar en su primer inicio de sesión. No existe registro público. | Administrador | Sección 1.3 |
 | FR-04 | El administrador desactiva y reactiva cuentas de operador. Las cuentas no se borran. | Administrador | Sección 1.3, BR-12 |
 | FR-05 | El administrador restablece la contraseña de un operador. El operador debe cambiarla en su siguiente inicio de sesión, antes de usar cualquier otra función. | Administrador | Sección 1.3 |
@@ -80,7 +83,7 @@ automatizada en la que la API responde 403.
 | FR-07 | El sistema registra el ingreso con placa, tipo de vehículo y color (obligatorios) y marca (opcional). La hora y el operador los asigna el servidor. | Ambos | BR-01, BR-02, BR-16 |
 | FR-08 | El sistema normaliza la placa (mayúsculas, sin espacios ni guiones) y valida su formato según el tipo de vehículo. | Ambos | BR-02 |
 | FR-09 | El sistema rechaza el ingreso de una placa con estadía activa, alerta al operador de una posible placa clonada y registra el intento en la bitácora con los datos del vehículo rechazado. | Ambos | BR-03 |
-| FR-10 | El sistema lista los vehículos que están dentro del parqueadero. | Ambos | — |
+| FR-10 | El sistema lista los vehículos que están dentro del parqueadero. | Ambos | Necesidad operativa |
 | FR-11 | El sistema permite buscar una estadía activa por placa. | Ambos | BR-13 |
 
 ### 2.3 Salida y cobro
@@ -91,11 +94,13 @@ automatizada en la que la API responde 403.
 | FR-13 | El sistema calcula el cobro con la tarifa y el periodo de gracia vigentes al momento del ingreso, sobre minutos completos y redondeado al múltiplo de $50 inferior. La hora de salida la asigna el servidor. | Ambos | BR-05 a BR-08, BR-11, BR-16 |
 | FR-14 | El sistema emite el comprobante de pago con los datos de BR-14, visible e imprimible desde el navegador. | Ambos | BR-14 |
 
-### 2.4 Anulaciones
+### 2.4 Anulaciones y correcciones
 
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
 | FR-15 | El administrador anula una estadía y, si lo tiene, su comprobante, indicando el motivo. El usuario y la fecha los registra el servidor, y nada se borra. | Administrador | BR-12, BR-16 |
+| FR-21 | El administrador corrige la placa, el tipo, el color o la marca de una estadía activa o cerrada, indicando el motivo. En una sola transacción, el sistema la anula y crea una estadía de reemplazo vinculada a ella, con los datos corregidos, las mismas horas y la tarifa del tipo correcto vigente a la hora de ingreso. Si la estadía estaba cerrada, el reemplazo recibe un comprobante nuevo con el cobro recalculado. | Administrador | BR-11, BR-12, BR-16, BR-17 |
+| FR-22 | El administrador corrige una salida registrada a la estadía equivocada, indicando el motivo. En una sola transacción, el sistema reemplaza la estadía cerrada por error por una activa con la misma hora de ingreso, y cierra la estadía del vehículo que realmente salió con la hora de la salida anulada y su comprobante. | Administrador | BR-12, BR-16, BR-17 |
 
 ### 2.5 Configuración
 
@@ -109,7 +114,7 @@ automatizada en la que la API responde 403.
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
 | FR-18 | El administrador consulta el historial de estadías y comprobantes, con filtros por fechas, placa, operador y estado. | Administrador | BR-12 |
-| FR-19 | El administrador consulta la bitácora de auditoría: inicios de sesión (exitosos y fallidos), ingresos, ingresos rechazados por placa con estadía activa, salidas, anulaciones, cambios de configuración, gestión de cuentas y accesos denegados. | Administrador | BR-03, BR-12 |
+| FR-19 | El administrador consulta la bitácora de auditoría: inicios de sesión (exitosos y fallidos), ingresos, ingresos rechazados por placa con estadía activa, salidas, anulaciones, correcciones, cambios de configuración, gestión de cuentas y accesos denegados. | Administrador | BR-03, BR-12 |
 | FR-20 | El administrador ve un resumen del recaudo por día y por operador. | Administrador | Sección 1.3 |
 
 ## 3. Requisitos no funcionales
@@ -117,7 +122,8 @@ automatizada en la que la API responde 403.
 Las categorías siguen el modelo de calidad ISO/IEC 25010:2023; la de costo se
 agrega por la restricción de presupuesto del proyecto. Cada requisito tiene una
 meta medible y una forma de verificarla. Los de desempeño y fiabilidad se
-evalúan en el Sprint 3, como parte del objetivo específico 4.
+evalúan en el Sprint 3, como parte del objetivo específico 4, evalúan en el Sprint 3, como parte del objetivo específico 4. NFR-14 mide la
+consulta del historial, así que depende de US-13 y sigue su misma prioridad.
 
 ### 3.1 Seguridad
 
@@ -176,6 +182,7 @@ evalúan en el Sprint 3, como parte del objetivo específico 4.
 
 Formato: "Como… quiero… para…", con criterios de aceptación "Dado… cuando…
 entonces…". Priorización MoSCoW. Las historias Must del núcleo del registro y la facturación se entregan desplegadas en el Sprint 2; las demás Must y las Should se desarrollan en el Sprint 3. Mientras tanto, las cuentas se crean con el script de arranque y el periodo de gracia queda con un valor inicial.
+Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3 no alcanza, pasan al backlog del producto, y esa decisión se informa en la revisión del sprint.
 
 ### 4.1 Resumen
 
@@ -190,7 +197,7 @@ entonces…". Priorización MoSCoW. Las historias Must del núcleo del registro 
 | US-07 | Ver los vehículos que están dentro y buscar por placa | FR-10, FR-11 | Must | 2 |
 | US-08 | Registrar la salida y calcular el cobro | FR-12, FR-13 | Must | 2 |
 | US-09 | Emitir el comprobante de pago | FR-14 | Must | 2 |
-| US-10 | Anular una estadía | FR-15 | Must | 3 |
+| US-10 | Anular o corregir una estadía | FR-15, FR-21, FR-22 | Must | 3 |
 | US-11 | Configurar la tarifa por minuto | FR-16 | Must | 2 |
 | US-12 | Configurar el periodo de gracia | FR-17 | Must | 3 |
 | US-13 | Consultar el historial | FR-18 | Should | 3 |
@@ -280,14 +287,17 @@ tenga constancia de lo que pagó.
 - **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra placa, ingreso, salida, minutos cobrados, tarifa aplicada, ajuste por redondeo y total (BR-14).
 - **Dado** un comprobante en pantalla, **cuando** lo imprimo desde el navegador, **entonces** sale completo en una página.
 
-#### US-10 Anular una estadía
+#### US-10 Anular o corregir una estadía
 
-**Como** administrador, **quiero** anular una estadía registrada por error
-**para** corregirla sin borrar evidencia.
+**Como** administrador, **quiero** anular o corregir una estadía registrada por error, **para** que el cobro sea correcto sin borrar evidencia.
 
 - **Dado** una estadía, **cuando** la anulo con un motivo, **entonces** queda anulada con mi usuario y la hora del servidor, y se conserva en el historial.
-- **Dado** que no escribo un motivo, **cuando** intento anular, **entonces** se rechaza.
-- **Dado** que soy operador, **cuando** intento anular, **entonces** la API responde 403 (sección 1.3).
+- **Dado** que no escribo un motivo, **cuando** intento anular o corregir, **entonces** se rechaza.
+- **Dado** una estadía activa registrada con la placa ABC128 a las 8:02, **cuando** la corrijo a ABC123 con un motivo, **entonces** ABC128 queda anulada y se crea una estadía activa ABC123 con ingreso a las 8:02, vinculada a la anulada (BR-17).
+- **Dado** una estadía registrada como moto que en realidad es un carro, **cuando** corrijo el tipo, **entonces** el reemplazo usa la tarifa de carro vigente a la hora de ingreso original (BR-11) y, si la estadía estaba cerrada, recibe un comprobante nuevo con el cobro recalculado.
+- **Dado** una salida registrada a la estadía de un carro que sigue dentro, **cuando** la corrijo indicando la estadía del carro que salió, **entonces** la primera se reemplaza por una activa con su misma hora de ingreso, y la segunda queda cerrada con la hora de la salida anulada y su comprobante.
+- **Dado** que la placa corregida ya tiene una estadía activa, **cuando** intento corregir, **entonces** se rechaza con 409 y no cambia nada (RI-02).
+- **Dado** que soy operador, **cuando** intento anular o corregir, **entonces** la API responde 403.
 
 #### US-11 Configurar la tarifa por minuto
 
@@ -337,7 +347,7 @@ cuadrar caja con lo que entrega cada operador.
 | Objetivo específico | Se cumple con | Requisitos relacionados |
 |---|---|---|
 | OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos y arquitectura (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
-| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-20; NFR-01 a NFR-08, NFR-20 |
+| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-22; NFR-01 a NFR-08, NFR-20 |
 | OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 2) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
 | OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
 
@@ -346,7 +356,7 @@ cuadrar caja con lo que entrega cada operador.
 | Requisito | Origen | Historia |
 |---|---|---|
 | FR-01 | Sección 1.3 | US-01 |
-| FR-02 | — | US-01 |
+| FR-02 | NFR-04 | US-01 |
 | FR-03 | Sección 1.3 | US-02 |
 | FR-04 | Sección 1.3, BR-12 | US-03 |
 | FR-05 | Sección 1.3 | US-04 |
@@ -354,7 +364,7 @@ cuadrar caja con lo que entrega cada operador.
 | FR-07 | BR-01, BR-02, BR-16 | US-06 |
 | FR-08 | BR-02 | US-06 |
 | FR-09 | BR-03 | US-06 |
-| FR-10 | — | US-07 |
+| FR-10 | Necesidad operativa | US-07 |
 | FR-11 | BR-13 | US-07 |
 | FR-12 | BR-04 | US-08 |
 | FR-13 | BR-05, BR-06, BR-07, BR-08, BR-11, BR-16 | US-08 |
@@ -365,9 +375,11 @@ cuadrar caja con lo que entrega cada operador.
 | FR-18 | BR-12 | US-13 |
 | FR-19 | BR-03, BR-12 | US-14 |
 | FR-20 | Sección 1.3 | US-15 |
+| FR-21 | BR-11, BR-12, BR-16, BR-17 | US-10 |
+| FR-22 | BR-12, BR-16, BR-17 | US-10 |
 
-Cobertura: las 16 reglas de negocio (BR-01 a BR-16) aparecen en al menos un
-requisito funcional, y los 20 requisitos funcionales tienen al menos una
+Cobertura: las 17 reglas de negocio (BR-01 a BR-16) aparecen en al menos un
+requisito funcional, y los 22 requisitos funcionales tienen al menos una
 historia de usuario. En el Sprint 2 se agrega una columna con las pruebas que
 verifican cada requisito.
 
@@ -388,6 +400,8 @@ guidelines: Authentication and authenticator management* (NIST Special
 | 1.0 | 8 de octubre de 2026 | Versión inicial |
 | 1.1 | 10 de octubre de 2026 | Toda contraseña asignada por otra persona debe cambiarse en el primer inicio de sesión (sección 1.3, FR-03, FR-05, US-02 y US-04). Los ingresos rechazados por placa con estadía activa y los accesos denegados quedan en la bitácora (FR-09, FR-19 y US-06). Hallazgos del modelo de datos, S1-04. |
 | 1.2 | 16 de octubre de 2026 | Sprints alineados con el plan de 3 sprints: US-02, US-03, US-10 y US-12 pasan al Sprint 3; NFR-09, NFR-12 y NFR-23 se verifican desde el Sprint 2; NFR-19 aclara que la integración continua aplica desde el Sprint 2. |
+| 1.3 | 20 de octubre de 2026 | FR-21 y FR-22: corrección de estadías por reemplazo (BR-17). US-10 pasa a "Anular o corregir una estadía", con cuatro criterios nuevos. Nueva fila en la matriz de permisos. Origen de FR-02 (NFR-04) y FR-10 (necesidad operativa). Regla para las historias Should, y dependencia de NFR-14 respecto de US-13. |
+
 Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
