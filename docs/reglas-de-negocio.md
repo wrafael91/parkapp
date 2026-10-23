@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5) |
-| Versión | 1.4 — 17 de octubre de 2026 |
+| Versión | 1.6 — 22 de octubre de 2026 |
 
 ## 1. Propósito
 
@@ -34,8 +34,7 @@ el Decreto 026 de 2026. De ella se derivan cuatro restricciones para el sistema:
    actualizan durante el primer trimestre de cada año (art. 200, par. 1).
 
 El valor máximo por minuto se calcula como VMPM = FTV × FSC × CBPM, donde FTV
-es el factor por tipo de vehículo (1,0 para carro y 0,7 para moto), FSC el factor
-por Sello Oro (1,1 si aplica, 1,0 si no) y CBPM el costo base por minuto ($230)
+es el factor por tipo de vehículo (1,0 para carro y 0,7 para moto), FSC es el factor por la estrategia de sellos de calidad de cicloparqueaderos (1,1 si el parqueadero tiene la certificación Sello Oro y 1,0 si no) y CBPM el costo base por minuto ($230)
 (Decreto 652/2025, art. 199, Tabla 9).
 
 Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 10):
@@ -168,8 +167,8 @@ el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 | Evento de auditoría | `auditEvent` |
 | Acción de auditoría | `auditAction` |
 | Bitácora de auditoría | `AuditEvent` (el conjunto de eventos) |
-| Corregir (*correct*) | Anular una estadía con datos equivocados y crear su reemplazo en la misma operación (BR-17). |
-| Reemplazo (*replacement*) | Estadía creada al corregir otra. Apunta a la estadía anulada (`replacesId`) y conserva las horas que el servidor registró en ella (BR-17). |
+| Corrección | `correct` (acción `STAY_CORRECTED`) |
+| Reemplazo | `replacement` (atributo `replacesId`) |
 
 ## 9. Referencias
 
@@ -197,3 +196,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.3 | 13 de octubre de 2026 | Se amplía el glosario con los términos del modelo de datos (S1-04) |
 | 1.4 | 17 de octubre de 2026 | BR-06: redacción ajustada a lo verificable en el Decreto 026 de 2026. Referencia oficial del Concepto 17-69998 de la SIC. Registro del medio de pago declarado fuera del alcance. |
 | 1.5 | 20 de octubre de 2026 | BR-17: corrección de estadías por reemplazo, con las horas registradas por el servidor. BR-16 aclara que una corrección solo copia horas ya registradas. Glosario: corregir y reemplazo. |
+| 1.6 | 22 de octubre de 2026 | FSC se define con su nombre oficial (factor por la estrategia de sellos de calidad de cicloparqueaderos). Glosario: corrección y reemplazo con el mismo formato de las demás filas. |
