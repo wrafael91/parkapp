@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-06 (#7) |
-| Versión | 1.1 — 20 de octubre de 2026 |
+| Versión | 1.2 — 22 de octubre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -235,22 +235,25 @@ flowchart TB
         gh["<b>GitHub Actions</b><br/>Pruebas, compilación<br/>y despliegue"]
     end
 
-    subgraph aws["AWS · Región us-east-1 (Norte de Virginia)"]
+        subgraph aws["Cuenta de AWS"]
         direction TB
-        subgraph vpc["VPC 10.0.0.0/16"]
-            direction LR
-            subgraph pub["Subred pública · us-east-1a"]
-                ec2["<b>Instancia EC2</b> t4g.micro<br/>Amazon Linux 2023<br/>Nginx con TLS + API Node.js"]
+        budgets["<b>AWS Budgets</b><br/>Servicio de la cuenta<br/>Alerta al 80 % y acción al 100 %"]
+        subgraph region["Región us-east-1 (Norte de Virginia)"]
+            direction TB
+            subgraph vpc["VPC 10.0.0.0/16"]
+                direction LR
+                subgraph pub["Subred pública · us-east-1a"]
+                    ec2["<b>Instancia EC2</b> t4g.micro<br/>Amazon Linux 2023<br/>Nginx con TLS + API Node.js"]
+                end
+                subgraph priv["Subredes privadas · us-east-1a y us-east-1b"]
+                    rds[("<b>Amazon RDS</b><br/>PostgreSQL 16, db.t4g.micro<br/>Una zona, cifrada")]
+                end
             end
-            subgraph priv["Subredes privadas · us-east-1a y us-east-1b"]
-                rds[("<b>Amazon RDS</b><br/>PostgreSQL 16, db.t4g.micro<br/>Una zona, cifrada")]
+            subgraph regionales["Servicios regionales"]
+                direction LR
+                ssm["<b>Systems Manager</b><br/>Session Manager · Run Command<br/>Parameter Store"]
+                s3["<b>Amazon S3</b><br/>Artefactos de despliegue"]
             end
-        end
-        subgraph regionales["Servicios regionales"]
-            direction LR
-            ssm["<b>Systems Manager</b><br/>Session Manager · Run Command<br/>Parameter Store"]
-            s3["<b>Amazon S3</b><br/>Artefactos de despliegue"]
-            budgets["<b>AWS Budgets</b><br/>Alerta al 80 %<br/>y acción al 100 %"]
         end
     end
 
@@ -379,3 +382,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | 0.1 | 14 de octubre de 2026 | Secciones 1 a 5 y 7; ADR 0001 a 0003. |
 | 1.0 | 17 de octubre de 2026 | Sección 6, despliegue en AWS; ADR 0004 a 0007; diagramas de componentes y de la salida simplificados. |
 | 1.1 | 20 de octubre de 2026 | El componente Estadías incluye la corrección por reemplazo (FR-21, FR-22); rango de reglas de integridad hasta RI-19. |
+| 1.2 | 22 de octubre de 2026 | Diagrama de despliegue: la cuenta de AWS contiene la región, y AWS Budgets queda a nivel de cuenta. |
