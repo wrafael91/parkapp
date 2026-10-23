@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25 |
-| Versión | 1.3 — 20 de octubre de 2026|
+| Versión | 1.4 — 22 de octubre de 2026|
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -16,7 +16,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Actor | Descripción | Usa la aplicación |
 |---|---|---|
 | Operador | Registra ingresos y salidas, y entrega el comprobante de pago. | Sí |
-| Administrador | Configura la tarifa y el periodo de gracia, gestiona las cuentas de operador, anula registros y consulta el historial. También puede operar. | Sí |
+| Administrador | Configura la tarifa y el periodo de gracia, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
 | Cliente | Propietario o conductor del vehículo. Recibe el comprobante. | No |
 | Mantenedor de la plataforma | Actualiza el tope legal y la condición de Sello Oro mediante migraciones versionadas en el repositorio (BR-15). | No |
 
@@ -245,7 +245,7 @@ cortar su acceso sin perder el rastro de sus registros.
 
 #### US-05 Cambiar mi contraseña
 
-**Como** usuario, **quiero** cambiar mi contraseña **para** mantener mi cuenta segura.
+**Como** operador o administrador, **quiero** cambiar mi contraseña **para** mantener mi cuenta segura.
 
 - **Dado** que ingreso mi contraseña actual y una nueva válida, **cuando** confirmo, **entonces** la contraseña cambia.
 - **Dado** que la contraseña actual es incorrecta, **cuando** confirmo, **entonces** el cambio se rechaza.
@@ -284,7 +284,7 @@ cobro **para** no hacer cálculos a mano.
 **Como** operador, **quiero** entregar un comprobante **para** que el cliente
 tenga constancia de lo que pagó.
 
-- **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra placa, ingreso, salida, minutos cobrados, tarifa aplicada, ajuste por redondeo y total (BR-14).
+- **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra su número consecutivo, placa, ingreso, salida, minutos cobrados, tarifa aplicada, ajuste por redondeo y total (BR-14).
 - **Dado** un comprobante en pantalla, **cuando** lo imprimo desde el navegador, **entonces** sale completo en una página.
 
 #### US-10 Anular o corregir una estadía
@@ -401,6 +401,7 @@ guidelines: Authentication and authenticator management* (NIST Special
 | 1.1 | 10 de octubre de 2026 | Toda contraseña asignada por otra persona debe cambiarse en el primer inicio de sesión (sección 1.3, FR-03, FR-05, US-02 y US-04). Los ingresos rechazados por placa con estadía activa y los accesos denegados quedan en la bitácora (FR-09, FR-19 y US-06). Hallazgos del modelo de datos, S1-04. |
 | 1.2 | 16 de octubre de 2026 | Sprints alineados con el plan de 3 sprints: US-02, US-03, US-10 y US-12 pasan al Sprint 3; NFR-09, NFR-12 y NFR-23 se verifican desde el Sprint 2; NFR-19 aclara que la integración continua aplica desde el Sprint 2. |
 | 1.3 | 20 de octubre de 2026 | FR-21 y FR-22: corrección de estadías por reemplazo (BR-17). US-10 pasa a "Anular o corregir una estadía", con cuatro criterios nuevos. Nueva fila en la matriz de permisos. Origen de FR-02 (NFR-04) y FR-10 (necesidad operativa). Regla para las historias Should, y dependencia de NFR-14 respecto de US-13. |
+| 1.4 | 22 de octubre de 2026 | El administrador también corrige registros (BR-17). US-05 usa los actores definidos. US-09: el comprobante muestra su número consecutivo. |
 
 Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
 
