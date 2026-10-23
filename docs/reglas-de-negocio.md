@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5) |
-| Versión | 1.6 — 22 de octubre de 2026 |
+| Versión | 1.7 — 22 de octubre de 2026 |
 
 ## 1. Propósito
 
@@ -15,7 +15,7 @@ del servicio de parqueo en ParkApp. Cada regla tiene un identificador único
 ## 2. Actores
 
 - **Operador:** registra ingresos y salidas, y entrega el comprobante.
-- **Administrador:** configura tarifas, topes legales y periodo de gracia; anula registros.
+- **Administrador:** configura tarifas y periodo de gracia; anula y corrige registros. No modifica los topes legales (BR-15).
 - **Cliente:** propietario o conductor del vehículo. No usa el sistema directamente.
 
 ## 3. Marco normativo
@@ -197,3 +197,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.4 | 17 de octubre de 2026 | BR-06: redacción ajustada a lo verificable en el Decreto 026 de 2026. Referencia oficial del Concepto 17-69998 de la SIC. Registro del medio de pago declarado fuera del alcance. |
 | 1.5 | 20 de octubre de 2026 | BR-17: corrección de estadías por reemplazo, con las horas registradas por el servidor. BR-16 aclara que una corrección solo copia horas ya registradas. Glosario: corregir y reemplazo. |
 | 1.6 | 22 de octubre de 2026 | FSC se define con su nombre oficial (factor por la estrategia de sellos de calidad de cicloparqueaderos). Glosario: corrección y reemplazo con el mismo formato de las demás filas. |
+| 1.7 | 22 de octubre de 2026 | Actores: el administrador ya no figura como quien configura los topes legales, que contradecía BR-15; se agrega que corrige registros (BR-17). |
