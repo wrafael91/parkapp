@@ -210,15 +210,21 @@ Los nombres de carpetas siguen el glosario en inglés.
 ```
 backend/src/
 ├── modules/
-│   ├── accounts/      rutas, esquemas, servicio y acceso a datos
+│   ├── accounts/          rutas, esquemas, servicio y acceso a datos
 │   ├── stays/
 │   ├── settings/
-│   └── audit/
+│   ├── audit/
+│   └── health/            verificación de salud (GET /api/salud)
 ├── domain/
 │   └── fee-calculation/   función pura y sus pruebas
 ├── middleware/
-└── app                cadena de middleware y registro de rutas
+├── generated/             cliente de Prisma generado (no se versiona)
+├── app.ts                 cadena de middleware y registro de rutas
+├── config.ts              lectura y validación de las variables de entorno
+├── db.ts                  creación del cliente de Prisma
+└── server.ts              arranque en 127.0.0.1 y cierre ordenado
 ```
+Las pruebas van junto al código que prueban, con el sufijo .test.ts.
 
 ## 6. Despliegue en AWS
 
