@@ -1,6 +1,6 @@
 # ParkApp
 
-[![CI](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml/badge.svg)](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml)
+[![CI](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml)
 
 Parking management system for small and medium off-street parking lots in Bogotá, Colombia. It records vehicle entries and exits, calculates the per-minute fee under the city's current regulation (Decreto 652 de 2025, as amended by Decreto 026 de 2026), and keeps an audit trail of every operation.
 
