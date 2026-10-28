@@ -1,3 +1,20 @@
+# ParkApp
+
+[![CI](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml)
+
+Parking management system for small and medium off-street parking lots in Bogotá, Colombia. It records vehicle entries and exits, calculates the per-minute fee under the city's current regulation (Decreto 652 de 2025, as amended by Decreto 026 de 2026), and keeps an audit trail of every operation.
+
+Undergraduate thesis project, Software Engineering, Politécnico Grancolombiano (2026).
+
+**Stack:** Node.js, Express, Prisma, PostgreSQL, React, AWS (EC2, RDS, Systems Manager).
+
+## Documentation (in Spanish)
+
+- [Business rules](docs/reglas-de-negocio.md)
+- [Requirements](docs/requisitos.md)
+- [Data model](docs/modelo-datos.md)
+- [Architecture](docs/arquitectura.md) and [decision records](docs/adr/)
+
 ## Run the API locally
 
 Requirements: Node.js 22.12 or later and Docker Desktop.
