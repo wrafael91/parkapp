@@ -327,6 +327,31 @@ El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan p
 | `parkapp_migrator` | Aplicar las migraciones de Prisma durante el despliegue. | Dueño del esquema: crea y modifica tablas. |
 | `parkapp_app` | La API en operación normal. | Solo los que necesita cada tabla, sin crear ni modificar tablas. En la bitácora, únicamente consultar e insertar (NFR-12). |
 
+**Roles y permisos de la base de datos (ADR 0006)**
+
+Los roles se crean con `backend/db/bootstrap/roles.sql`, fuera de las migraciones, porque `parkapp_migrator`, que las ejecuta, no tiene permiso para crear roles. El script es idempotente y crea los roles sin inicio de sesión ni contraseña. Cada entorno los habilita por fuera del repositorio (NFR-10): docker-compose al crear la base local, el CI con una contraseña que solo existe durante la ejecución, y el usuario maestro en RDS con las contraseñas de Parameter Store.
+
+| Rol | Uso |
+|---|---|
+| `parkapp_migrator` | Dueño del esquema. Solo aplica migraciones. |
+| `parkapp_app` | Usuario de la API, con permisos mínimos. |
+
+Permisos de `parkapp_app` (migración `grant_app_privileges`):
+
+| Tabla | SELECT | INSERT | UPDATE | Regla |
+|---|---|---|---|---|
+| `usuario` | Sí | Sí | Sí | RI-13 (no se borra) |
+| `sesion` | Sí | Sí | Sí | — |
+| `tope_legal` | Sí | No | No | BR-15 |
+| `tarifa` | Sí | Sí | Solo `vigente_hasta` | RI-08 |
+| `periodo_gracia` | Sí | Sí | Solo `vigente_hasta` | RI-08 |
+| `estadia` | Sí | Sí | Solo los datos de salida y anulación | BR-17 |
+| `comprobante` | Sí | Sí | No | RI-12 |
+| `evento_auditoria` | Sí | Sí | No | NFR-12 |
+| `_prisma_migrations` | No | No | No | Tabla de control de Prisma |
+
+Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus secuencias. Cada migración que cree una tabla incluye sus GRANT; no se usa ALTER DEFAULT PRIVILEGES. Una prueba falla si alguna tabla del esquema no concede SELECT a `parkapp_app`, o si `_prisma_migrations` le concede algún permiso.
+
 ### 6.6 Flujo de despliegue
 
 1. Al fusionar un pull request en `main`, GitHub Actions ejecuta las pruebas, compila la aplicación web y empaqueta la API (NFR-19).

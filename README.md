@@ -42,3 +42,13 @@ It returns `{"estado":"ok"}`, or `503` with `{"estado":"no_disponible"}` if the 
 | `npm test` | Runs the tests (the database must be running) |
 | `npm run build` | Compiles the API to `dist/` |
 | `npm start` | Runs the compiled API |
+
+### Database roles
+
+The API and the migrations use two database roles defined in `backend/db/bootstrap/roles.sql` (ADR 0006). A new local database gets them automatically through docker-compose. If your Docker volume was created before this script existed, run it once before applying the migrations:
+
+```powershell
+Get-Content db/bootstrap/roles.sql | docker exec -i parkapp-db psql -U parkapp -d parkapp_dev -v ON_ERROR_STOP=1
+```
+
+On macOS or Linux: `docker exec -i parkapp-db psql -U parkapp -d parkapp_dev -v ON_ERROR_STOP=1 < db/bootstrap/roles.sql`

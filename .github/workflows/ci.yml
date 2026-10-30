@@ -53,7 +53,22 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npx prisma migrate deploy
+            - name: Create database roles
+        env:
+          PGHOST: localhost
+          PGUSER: parkapp
+          PGPASSWORD: ci_only_password
+          PGDATABASE: parkapp_ci
+        run: |
+          psql -v ON_ERROR_STOP=1 -f db/bootstrap/roles.sql
+          psql -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE parkapp_migrator LOGIN PASSWORD 'ci_migrator_password'" \
+            -c "ALTER DATABASE parkapp_ci OWNER TO parkapp_migrator"
+
+      - name: Apply migrations as parkapp_migrator
+        env:
+          DATABASE_URL: postgresql://parkapp_migrator:ci_migrator_password@localhost:5432/parkapp_ci?schema=public
+        run: npx prisma migrate deploy
       - run: npm run test:coverage
 
       - name: Coverage summary
