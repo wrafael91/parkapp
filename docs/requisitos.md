@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25 |
-| Versión | 1.4 — 22 de octubre de 2026|
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44) |
+| Versión | 1.5 — 30 de octubre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -122,7 +122,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 Las categorías siguen el modelo de calidad ISO/IEC 25010:2023; la de costo se
 agrega por la restricción de presupuesto del proyecto. Cada requisito tiene una
 meta medible y una forma de verificarla. Los de desempeño y fiabilidad se
-evalúan en el Sprint 3, como parte del objetivo específico 4, evalúan en el Sprint 3, como parte del objetivo específico 4. NFR-14 mide la
+evalúan en el Sprint 3, como parte del objetivo específico 4. NFR-02 y NFR-05 se cumplen en parte en el Sprint 2 (longitud de la contraseña y verificación básica del rol) y se completan en el Sprint 3. NFR-14 mide la
 consulta del historial, así que depende de US-13 y sigue su misma prioridad.
 
 ### 3.1 Seguridad
@@ -130,13 +130,13 @@ consulta del historial, así que depende de US-13 y sigue su misma prioridad.
 | ID | Requisito | Verificación | Sprint |
 |---|---|---|---|
 | NFR-01 | Las contraseñas se almacenan con un algoritmo de hash adaptativo con sal (Argon2id o bcrypt). Nunca se guardan en texto plano ni de forma reversible. | Revisión de código y prueba automatizada | 2 |
-| NFR-02 | Las contraseñas tienen mínimo 15 caracteres y se aceptan hasta 64, sin reglas de composición. Se rechazan las que aparecen en una lista de contraseñas comunes o filtradas, y no se exige cambio periódico (NIST SP 800-63B-4). | Pruebas automatizadas | 2 |
-| NFR-03 | Tras 5 intentos fallidos de inicio de sesión en 15 minutos, la cuenta se bloquea durante 15 minutos. Cada intento fallido queda en la bitácora (FR-19). | Prueba automatizada | 2 |
+| NFR-02 | Las contraseñas tienen mínimo 15 caracteres y se aceptan hasta 64, sin reglas de composición. Se rechazan las que aparecen en una lista de contraseñas comunes o filtradas, y no se exige cambio periódico (NIST SP 800-63B-4). | Pruebas automatizadas | 2 y 3 |
+| NFR-03 | Tras 5 intentos fallidos de inicio de sesión en 15 minutos, la cuenta se bloquea durante 15 minutos. Cada intento fallido queda en la bitácora (FR-19). | Prueba automatizada | 3 |
 | NFR-04 | La sesión expira tras 30 minutos de inactividad y, como máximo, a las 12 horas. Cerrar sesión o desactivar una cuenta invalida sus sesiones de inmediato. | Prueba automatizada | 2 |
-| NFR-05 | Cada petición a la API verifica el rol en el servidor según la matriz de la sección 1.2. Una acción no permitida responde 403 y queda en la bitácora. | Una prueba automatizada por cada ✗ de la matriz | 2 |
+| NFR-05 | Cada petición a la API verifica el rol en el servidor según la matriz de la sección 1.2. Una acción no permitida responde 403 y queda en la bitácora. | Una prueba automatizada por cada ✗ de la matriz | 2 y 3 |
 | NFR-06 | Toda entrada se valida en el servidor contra un esquema (tipo, formato y longitud), y el acceso a datos usa consultas parametrizadas. | Pruebas automatizadas con entradas inválidas | 2 |
 | NFR-07 | Los errores no exponen detalles internos al cliente (trazas, consultas SQL, versiones). El detalle queda solo en los registros del servidor. | Pruebas automatizadas | 2 |
-| NFR-08 | La API limita las peticiones por cliente (100 por minuto por IP en general, con un límite más estricto en el inicio de sesión) y responde 429 al superarlo. | Prueba automatizada | 2 |
+| NFR-08 | La API limita las peticiones por cliente (100 por minuto por IP en general, con un límite más estricto en el inicio de sesión) y responde 429 al superarlo. | Prueba automatizada | 3 |
 | NFR-09 | La comunicación usa exclusivamente HTTPS (TLS 1.2 o superior), y la base de datos y sus respaldos están cifrados en reposo. | Revisión de configuración y escaneo TLS | 2 |
 | NFR-10 | Ningún secreto (contraseñas, llaves o tokens) está en el repositorio. En AWS, los secretos se gestionan con un servicio de secretos, y GitHub tiene activado el escaneo de secretos. | Escaneo de secretos y revisión | 1 a 3 |
 | NFR-11 | Al cierre de cada sprint, las dependencias no tienen vulnerabilidades conocidas de severidad alta o crítica. | npm audit y Dependabot | 1 a 3 |
@@ -170,7 +170,7 @@ consulta del historial, así que depende de US-13 y sigue su misma prioridad.
 | ID | Requisito | Verificación | Sprint |
 |---|---|---|---|
 | NFR-21 | Un operador registra un ingreso desde una sola pantalla, sin recargar la página, en menos de 15 segundos. | Prueba con 3 usuarios | 3 |
-| NFR-22 | La interfaz funciona en las dos últimas versiones de Chrome, Edge y Firefox, en pantallas desde 1024 px de ancho. | Prueba manual | 2 |
+| NFR-22 | La interfaz funciona en las dos últimas versiones de Chrome, Edge y Firefox, en pantallas desde 1024 px de ancho. | Prueba manual | 3 |
 
 ### 3.6 Costo
 
@@ -181,7 +181,7 @@ consulta del historial, así que depende de US-13 y sigue su misma prioridad.
 ## 4. Historias de usuario
 
 Formato: "Como… quiero… para…", con criterios de aceptación "Dado… cuando…
-entonces…". Priorización MoSCoW. Las historias Must del núcleo del registro y la facturación se entregan desplegadas en el Sprint 2; las demás Must y las Should se desarrollan en el Sprint 3. Mientras tanto, las cuentas se crean con el script de arranque y el periodo de gracia queda con un valor inicial.
+entonces…". Priorización MoSCoW. Las historias Must del núcleo del registro y la facturación se entregan desplegadas en el Sprint 2; las demás Must y las Should se desarrollan en el Sprint 3. Mientras tanto, el script de arranque crea las cuentas y carga la tarifa, y el periodo de gracia queda con un valor inicial. En el Sprint 2, US-07 entrega la lista de vehículos dentro; la búsqueda por placa se completa en el Sprint 3.
 Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3 no alcanza, pasan al backlog del producto, y esa decisión se informa en la revisión del sprint.
 
 ### 4.1 Resumen
@@ -194,11 +194,11 @@ Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3
 | US-04 | Restablecer la contraseña de un operador | FR-05 | Should | 3 |
 | US-05 | Cambiar mi contraseña | FR-06 | Should | 3 |
 | US-06 | Registrar el ingreso de un vehículo | FR-07, FR-08, FR-09 | Must | 2 |
-| US-07 | Ver los vehículos que están dentro y buscar por placa | FR-10, FR-11 | Must | 2 |
+| US-07 | Ver los vehículos que están dentro y buscar por placa | FR-10, FR-11 | Must | 2 y 3 |
 | US-08 | Registrar la salida y calcular el cobro | FR-12, FR-13 | Must | 2 |
 | US-09 | Emitir el comprobante de pago | FR-14 | Must | 2 |
 | US-10 | Anular o corregir una estadía | FR-15, FR-21, FR-22 | Must | 3 |
-| US-11 | Configurar la tarifa por minuto | FR-16 | Must | 2 |
+| US-11 | Configurar la tarifa por minuto | FR-16 | Must | 3 |
 | US-12 | Configurar el periodo de gracia | FR-17 | Must | 3 |
 | US-13 | Consultar el historial | FR-18 | Should | 3 |
 | US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
@@ -237,10 +237,10 @@ cortar su acceso sin perder el rastro de sus registros.
 #### US-04 Restablecer la contraseña de un operador
 
 **Como** administrador, **quiero** restablecer la contraseña de un operador
-**Dado** que restablecí la contraseña de un operador, **cuando** él inicia sesión con ella, **entonces** el sistema le exige cambiarla antes de permitir cualquier otra acción.
 **para** que recupere el acceso si la olvida.
 
 - **Dado** un operador, **cuando** restablezco su contraseña, **entonces** sus sesiones abiertas se invalidan y el evento queda en la bitácora.
+- **Dado** que restablecí la contraseña de un operador, **cuando** él inicia sesión con ella, **entonces** el sistema le exige cambiarla antes de permitir cualquier otra acción.
 - **Dado** que soy operador, **cuando** intento restablecer la contraseña de otro usuario, **entonces** la API responde 403.
 
 #### US-05 Cambiar mi contraseña
@@ -258,7 +258,6 @@ su estadía se cuente desde ese momento.
 - **Dado** una placa con estadía activa, **cuando** intento registrar su ingreso, **entonces** se rechaza con una alerta de posible placa clonada (BR-03), y el intento queda en la bitácora con los datos del vehículo rechazado.
 - **Dado** que escribo `abc-123`, **cuando** registro el ingreso, **entonces** la placa se guarda como `ABC123`.
 - **Dado** una placa con formato inválido para su tipo de vehículo, **cuando** registro el ingreso, **entonces** se rechaza.
-- **Dado** una placa con estadía activa, **cuando** intento registrar su ingreso, **entonces** se rechaza con una alerta de posible placa clonada (BR-03).
 - **Dado** que la petición incluye una hora de ingreso, **cuando** se registra, **entonces** el sistema la ignora y usa la del servidor (BR-16).
 
 #### US-07 Ver los vehículos que están dentro y buscar por placa
@@ -392,6 +391,10 @@ Quality Requirements and Evaluation (SQuaRE) — Product quality model*
 
 National Institute of Standards and Technology. (2025). *Digital identity
 guidelines: Authentication and authenticator management* (NIST Special
+Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
+
+OWASP Foundation. (2025). *OWASP Application Security Verification Standard
+5.0.0*. https://owasp.org/www-project-application-security-verification-standard/
 
 ## 7. Historial de cambios
 
@@ -402,8 +405,7 @@ guidelines: Authentication and authenticator management* (NIST Special
 | 1.2 | 16 de octubre de 2026 | Sprints alineados con el plan de 3 sprints: US-02, US-03, US-10 y US-12 pasan al Sprint 3; NFR-09, NFR-12 y NFR-23 se verifican desde el Sprint 2; NFR-19 aclara que la integración continua aplica desde el Sprint 2. |
 | 1.3 | 20 de octubre de 2026 | FR-21 y FR-22: corrección de estadías por reemplazo (BR-17). US-10 pasa a "Anular o corregir una estadía", con cuatro criterios nuevos. Nueva fila en la matriz de permisos. Origen de FR-02 (NFR-04) y FR-10 (necesidad operativa). Regla para las historias Should, y dependencia de NFR-14 respecto de US-13. |
 | 1.4 | 22 de octubre de 2026 | El administrador también corrige registros (BR-17). US-05 usa los actores definidos. US-09: el comprobante muestra su número consecutivo. |
-
-Publication 800-63B-4). https://doi.org/10.6028/NIST.SP.800-63B-4
+| 1.5 | 30 de octubre de 2026 | Replaneación del Sprint 2 del 26 de octubre, según la capacidad medida: US-11, NFR-03, NFR-08 y NFR-22 pasan al Sprint 3, y US-07, NFR-02 y NFR-05 se completan en el Sprint 3. El script de arranque carga la tarifa. Correcciones: frase duplicada en la sección 3, criterio de US-04 fuera de lugar, criterio repetido en US-06 y referencias de la sección 6 partidas por el historial. |
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 5.0.0*. https://owasp.org/www-project-application-security-verification-standard/

@@ -169,7 +169,7 @@ el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 | Bitácora de auditoría | `AuditEvent` (el conjunto de eventos) |
 | Corrección | `correct` (acción `STAY_CORRECTED`) |
 | Reemplazo | `replacement` (atributo `replacesId`) |
-| Salud | health |
+| Salud | `health` |
 
 ## 9. Referencias
 
