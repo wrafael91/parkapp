@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7) |
-| Versión | 1.2 — 22 de octubre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43) |
+| Versión | 1.3 — 30 de octubre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -289,21 +289,23 @@ Desde internet solo se llega al puerto 443 del servidor. La base de datos no tie
 |---|---|---|
 | Región | us-east-1 (Norte de Virginia). | NFR-23 · ADR 0004 |
 | Red (VPC) | `10.0.0.0/16`. Una subred pública (`10.0.1.0/24`, us-east-1a) con salida a internet. Dos subredes privadas sin ruta a internet: `10.0.11.0/24` en us-east-1a y `10.0.12.0/24` en us-east-1b. RDS exige subredes en dos zonas aunque la base de datos use una sola. Sin NAT Gateway. | NFR-09, NFR-23 |
-| Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. | NFR-09, NFR-17 · ADR 0002, 0004 |
+| Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Lleva la etiqueta `Proyecto=parkapp`, que el rol de GitHub Actions exige para enviarle comandos (sección 6.4). Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. | NFR-09, NFR-17 · ADR 0002, 0004 |
 | Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos con 7 días de retención y recuperación a un punto en el tiempo. Protección contra borrado. Respaldo diario de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). | NFR-09, NFR-18 · ADR 0004 |
 | Secretos | Parameter Store, con parámetros `SecureString` bajo `/parkapp/prod/`. | NFR-10 · ADR 0006 |
-| Artefactos | Bucket S3 privado, con bloqueo de acceso público y cifrado. Los artefactos se borran a los 30 días. | ADR 0007 |
+| Artefactos | Bucket S3 privado, con bloqueo de acceso público, cifrado SSE-S3 y una política que rechaza las peticiones sin TLS. Los artefactos se borran a los 30 días. | NFR-09 · ADR 0007 |
 | Dominio y DNS | Dominio en Cloudflare Registrar. Un registro A apunta a la IP elástica, sin el proxy de Cloudflare. | ADR 0005 |
 | Certificado TLS | Let's Encrypt con certbot y renovación automática. Solo TLS 1.2 y 1.3, con HSTS. | NFR-09 · ADR 0005 |
-| Presupuesto | AWS Budgets: 30 USD al mes, **sin incluir créditos**, porque con créditos el costo neto siempre da 0 y la alerta nunca se activaría. Alerta por correo al 80 % y, al 100 %, una acción automática que detiene EC2 y RDS. | NFR-23 |
+| Presupuesto | AWS Budgets: 30 USD al mes, **sin incluir créditos**, porque con créditos el costo neto siempre da 0 y la alerta nunca se activaría. Alerta por correo al 80 % y, al 100 %, una acción automática que detiene EC2 y RDS. La acción frena el gasto, pero no lo detiene de forma permanente: RDS vuelve a encender sola una base de datos detenida a los 7 días (sección 6.8). | NFR-23 |
 | Registro de actividad | Historial de eventos de CloudTrail: 90 días, sin costo. | — |
 
 ### 6.3 Reglas de red
 
 | Grupo de seguridad | Entrada | Salida |
 |---|---|---|
-| `sg-web` (EC2) | 443/TCP desde cualquier origen. 80/TCP desde cualquier origen, solo para redirigir a HTTPS y para la validación de Let's Encrypt. **Ningún puerto de administración: no se abre el 22.** | 443/TCP hacia internet (actualizaciones, Systems Manager, S3 y Let's Encrypt). 5432/TCP solo hacia `sg-db`. |
-| `sg-db` (RDS) | 5432/TCP solo desde `sg-web`. | Ninguna. |
+| `parkapp-web` (EC2) | 443/TCP desde cualquier origen. 80/TCP desde cualquier origen, solo para redirigir a HTTPS y para la validación de Let's Encrypt. **Ningún puerto de administración: no se abre el 22.** | 443/TCP hacia internet (actualizaciones, Systems Manager, S3 y Let's Encrypt). 5432/TCP solo hacia `parkapp-db`. |
+| `parkapp-db` (RDS) | 5432/TCP solo desde `parkapp-web`. | Ninguna. |
+
+Los grupos usan el prefijo `parkapp-` porque AWS no acepta nombres que empiecen por `sg-`. El grupo `default` de la VPC no tiene reglas de entrada ni de salida: si un recurso queda en él por error, no se conecta a nada.
 
 El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan por los grupos de seguridad.
 
@@ -315,8 +317,8 @@ El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan p
 |---|---|---|
 | Usuario raíz | Solo tareas de la cuenta (plan y facturación). | MFA y sin llaves de acceso. |
 | Administrador (persona) | Administrar la cuenta en el trabajo diario. | MFA obligatorio. Es distinto del usuario raíz. |
-| Rol del servidor EC2 | Conectarse a Systems Manager (`AmazonSSMManagedInstanceCore`), leer los parámetros de `/parkapp/prod/` y descargar del bucket de artefactos. | No puede modificar otros recursos de AWS. |
-| Rol de GitHub Actions | Subir al bucket de artefactos y ejecutar el documento `ParkApp-Deploy` en el servidor. | Solo lo puede asumir el repositorio `wrafael91/parkapp` desde la rama `main`, y con credenciales temporales (OIDC). |
+| Rol del servidor EC2 | Conectarse a Systems Manager (`AmazonSSMManagedInstanceCore`), leer los parámetros de `/parkapp/prod/` y descargar del bucket de artefactos. | No puede modificar otros recursos de AWS. `AmazonSSMManagedInstanceCore` permite leer cualquier parámetro de la cuenta, así que la política propia del rol agrega un Deny explícito sobre todo parámetro fuera de `/parkapp/prod/`; en IAM, un Deny explícito siempre prevalece. |
+| Rol de GitHub Actions | Subir al bucket de artefactos y ejecutar el documento `ParkApp-Deploy` en el servidor. | Solo lo puede asumir el repositorio `wrafael91/parkapp` desde la rama `main`, y con credenciales temporales (OIDC). Solo ejecuta `ParkApp-Deploy`, y solo en instancias con la etiqueta `Proyecto=parkapp`. |
 | Rol de AWS Budgets | Detener la instancia EC2 y la base de datos. | Solo sobre esos dos recursos. |
 
 ### 6.5 Usuarios de la base de datos
@@ -361,6 +363,8 @@ Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus s
 5. Verifica que `GET /api/salud` responda. Si falla, el documento vuelve a la versión anterior, que se conserva en el servidor.
 
 Las migraciones se diseñan compatibles con la versión anterior, para que volver atrás no obligue a deshacerlas. Antes de una migración que cambie tablas existentes, se toma una instantánea manual de la base de datos.
+
+El job de despliegue no usa `environment:` de GitHub Actions. Con esa opción, GitHub cambia el formato del `sub` del token OIDC, y el rol de AWS, que solo acepta `repo:wrafael91/parkapp:ref:refs/heads/main`, deja de funcionar.
 
 ### 6.7 Disponibilidad y respaldos
 
@@ -414,3 +418,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | 1.0 | 17 de octubre de 2026 | Sección 6, despliegue en AWS; ADR 0004 a 0007; diagramas de componentes y de la salida simplificados. |
 | 1.1 | 20 de octubre de 2026 | El componente Estadías incluye la corrección por reemplazo (FR-21, FR-22); rango de reglas de integridad hasta RI-19. |
 | 1.2 | 22 de octubre de 2026 | Diagrama de despliegue: la cuenta de AWS contiene la región, y AWS Budgets queda a nivel de cuenta. |
+| 1.3 | 30 de octubre de 2026 | Estructura de `backend/src` (5.5, #34). Roles y matriz de permisos de la base de datos (6.5, #59). Ajustes de la implementación en AWS (#43): nombres de los grupos de seguridad, Deny explícito en el rol del servidor, etiqueta `Proyecto=parkapp`, bucket solo con HTTPS, `environment:` excluido del despliegue y reencendido de RDS a los 7 días. |
