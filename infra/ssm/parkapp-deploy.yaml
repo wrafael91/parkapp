@@ -1,0 +1,156 @@
+schemaVersion: "2.2"
+description: "ParkApp: deploy a release from S3, run migrations, switch, verify /api/salud and roll back on failure."
+parameters:
+  Commit:
+    type: String
+    description: "Short commit hash (7 hex characters). The artifact is releases/<Commit>.tar.gz."
+    allowedPattern: "^[0-9a-f]{7}$"
+  Sha256:
+    type: String
+    description: "SHA-256 of the artifact, computed by the workflow that built it."
+    allowedPattern: "^[0-9a-f]{64}$"
+mainSteps:
+  - action: aws:runShellScript
+    name: deploy
+    inputs:
+      timeoutSeconds: "600"
+      runCommand:
+        - |
+          #!/bin/bash
+          # ParkApp-Deploy. Corre como root (Run Command). No usar set -x:
+          # imprimiría la URL de la base de datos en la salida del comando.
+          set -euo pipefail
+
+          # SSM reemplaza estos valores como texto; allowedPattern impide
+          # que traigan comandos (solo hexadecimal de longitud fija).
+          COMMIT="{{ Commit }}"
+          EXPECTED_SHA256="{{ Sha256 }}"
+
+          export AWS_REGION=us-east-1
+          BASE=/opt/parkapp
+          RELEASES="$BASE/releases"
+          NEW="$RELEASES/$COMMIT"
+          HEALTH_URL=http://127.0.0.1:3000/api/salud
+
+          health_ok() {
+            for _ in $(seq 1 15); do
+              if curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
+
+          # Cambio atómico del enlace: mv -T reemplaza "current" en un solo paso.
+          switch_to() {
+            ln -sfn "$1" "$BASE/current.new"
+            mv -T "$BASE/current.new" "$BASE/current"
+          }
+
+          # 1. Un solo despliegue a la vez.
+          exec 9>/run/parkapp-deploy.lock
+          if ! flock -n 9; then
+            echo "ERROR: another deployment is running"
+            exit 1
+          fi
+
+          # 2. Versión activa: es el destino si hay que volver atrás.
+          PREV_NAME="$(basename "$(readlink -f "$BASE/current")")"
+          echo "Current release: $PREV_NAME"
+          echo "New release:     $COMMIT"
+
+          # 3 a 5. Descargar, verificar y extraer. Una carpeta releases/<commit>
+          # solo existe si se extrajo completa (se extrae en .tmp y se renombra),
+          # así que si ya existe se reutiliza.
+          if [ -d "$NEW" ]; then
+            echo "Release $COMMIT is already on the server; reusing it"
+          else
+            # El bucket se deduce de la cuenta para no escribir su número aquí.
+            ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+            BUCKET="parkapp-artefactos-$ACCOUNT"
+            TMP="$(mktemp -d)"
+            trap 'rm -rf "$TMP" "$NEW.tmp"' EXIT
+
+            # El rol no puede listar el bucket: si el artefacto no existe, S3 responde 403.
+            if ! aws s3 cp "s3://$BUCKET/releases/$COMMIT.tar.gz" "$TMP/artifact.tar.gz" --only-show-errors; then
+              echo "ERROR: could not download releases/$COMMIT.tar.gz (403 means a missing artifact or a wrong commit)"
+              exit 1
+            fi
+
+            if ! echo "$EXPECTED_SHA256  $TMP/artifact.tar.gz" | sha256sum --check --status; then
+              echo "ERROR: SHA-256 mismatch; the artifact is not the one the workflow built"
+              exit 1
+            fi
+            echo "SHA-256 verified"
+
+            rm -rf "$NEW.tmp"
+            mkdir "$NEW.tmp"
+            tar --extract --gzip --file "$TMP/artifact.tar.gz" --directory "$NEW.tmp" \
+              --no-same-owner --no-same-permissions
+            # Dueño root; parkapp puede leer y ejecutar, pero no modificar.
+            chmod -R u=rwX,go=rX "$NEW.tmp"
+            mv -T "$NEW.tmp" "$NEW"
+            echo "Release $COMMIT extracted"
+          fi
+
+          if [ -f "$NEW/BUILD_INFO" ]; then
+            cat "$NEW/BUILD_INFO"
+          fi
+
+          # 6. Migraciones como parkapp: nada del artefacto corre como root.
+          # La URL se lee aquí y no se pasa como parámetro (los parámetros
+          # quedan en el historial de Run Command y en CloudTrail).
+          # CHECKPOINT_DISABLE=1: Prisma no envía datos de uso.
+          # JITI_FS_CACHE=false: Prisma no guarda prisma7.config.ts transpilado
+          # en /tmp/jiti, que es compartido (otro usuario podría dejar ahí
+          # código que se ejecutaría al migrar). Con esto no escribe nada.
+          MIGRATOR_URL="$(aws ssm get-parameter --name /parkapp/prod/db/url-migrator \
+            --with-decryption --query Parameter.Value --output text)"
+          cd "$NEW"
+          echo "Running migrations"
+          if ! DATABASE_URL="$MIGRATOR_URL" CHECKPOINT_DISABLE=1 JITI_FS_CACHE=false \
+            runuser -u parkapp -- ./node_modules/.bin/prisma migrate deploy; then
+            echo "ERROR: migrations failed; $PREV_NAME is still live and was not restarted"
+            exit 1
+          fi
+          unset MIGRATOR_URL
+
+          # 7. Activar la versión nueva. "|| true": si el servicio no arranca,
+          # decide la verificación de salud y no set -e (así hay vuelta atrás).
+          switch_to "$NEW"
+          systemctl restart parkapp-api || true
+          echo "Switched to $COMMIT; checking $HEALTH_URL"
+
+          # 8 y 9. Si responde, conservar solo la nueva y la anterior. Si se
+          # redesplegó la versión activa, no se borra nada: la "anterior" sería
+          # ella misma y se perdería la única versión de respaldo.
+          if health_ok; then
+            if [ "$PREV_NAME" != "$COMMIT" ]; then
+              for dir in "$RELEASES"/*; do
+                name="$(basename "$dir")"
+                if [ "$name" != "$COMMIT" ] && [ "$name" != "$PREV_NAME" ]; then
+                  rm -rf -- "$dir"
+                  echo "Removed old release $name"
+                fi
+              done
+            fi
+            echo "SUCCESS: $COMMIT is live"
+            exit 0
+          fi
+
+          # 10. No respondió: volver a la anterior y terminar con error.
+          echo "ERROR: $COMMIT did not pass the health check"
+          journalctl -u parkapp-api -n 20 --no-pager || true
+          if [ "$PREV_NAME" = "$COMMIT" ]; then
+            echo "ERROR: there is no different previous release to roll back to"
+            exit 1
+          fi
+          switch_to "$RELEASES/$PREV_NAME"
+          systemctl restart parkapp-api || true
+          if health_ok; then
+            echo "ROLLED BACK: $PREV_NAME is live again"
+          else
+            echo "CRITICAL: $PREV_NAME also failed the health check"
+          fi
+          exit 1
