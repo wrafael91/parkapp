@@ -98,10 +98,10 @@ jobs:
           retention-days: 1
 
   publish:
-    name: Upload to S3
+    name: Upload and deploy
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       id-token: write
 
@@ -138,3 +138,69 @@ jobs:
             echo "| SHA-256 | \`$SHA256\` |"
             echo "| S3 key | \`releases/$SHORT.tar.gz\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy with Run Command
+        env:
+          INSTANCE_ID: ${{ secrets.AWS_INSTANCE_ID }}
+          SHORT: ${{ needs.build.outputs.short_sha }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          # Same format the ParkApp-Deploy document enforces with allowedPattern.
+          [[ "$SHORT" =~ ^[0-9a-f]{7}$ ]] || { echo "Invalid commit: $SHORT"; exit 1; }
+          [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid SHA-256"; exit 1; }
+
+          PARAMS="$(jq -cn --arg c "$SHORT" --arg s "$SHA256" '{Commit: [$c], Sha256: [$s]}')"
+
+          # --timeout-seconds 120: if the server does not pick up the command in
+          # 2 minutes (for example, because it is stopped), the command expires
+          # instead of waiting up to an hour and running later, unattended.
+          COMMAND_ID="$(aws ssm send-command \
+            --document-name ParkApp-Deploy \
+            --instance-ids "$INSTANCE_ID" \
+            --parameters "$PARAMS" \
+            --timeout-seconds 120 \
+            --comment "Deploy run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT ($SHORT)" \
+            --query Command.CommandId --output text)"
+          echo "CommandId: $COMMAND_ID"
+
+          # Poll every 10 s for up to 12 minutes (120 s delivery + 600 s document).
+          # Only Status and ResponseCode are read: the command output would show
+          # the RDS endpoint, and these logs are public.
+          STATUS="NotStarted"
+          RESPONSE_CODE=""
+          ERROR_FILE="$(mktemp)"
+          for _ in $(seq 1 72); do
+            sleep 10
+            if ! RESULT="$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query '[Status, ResponseCode]' --output text 2>"$ERROR_FILE")"; then
+              if grep -q InvocationDoesNotExist "$ERROR_FILE"; then
+                continue
+              fi
+              cat "$ERROR_FILE"
+              exit 1
+            fi
+            read -r STATUS RESPONSE_CODE <<< "$RESULT"
+            case "$STATUS" in
+              Pending|InProgress|Delayed|Cancelling) continue ;;
+              *) break ;;
+            esac
+          done
+
+          {
+            echo "## Deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Command ID | \`$COMMAND_ID\` |"
+            echo "| Status | $STATUS |"
+            echo "| Response code | $RESPONSE_CODE |"
+            echo ""
+            echo "Full output: Systems Manager > Run Command > Command history."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Status: $STATUS, response code: $RESPONSE_CODE"
+          if [ "$STATUS" != "Success" ]; then
+            echo "ERROR: deployment did not succeed (see the command output in the AWS console)"
+            exit 1
+          fi
