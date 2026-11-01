@@ -1,0 +1,140 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    outputs:
+      short_sha: ${{ steps.package.outputs.short_sha }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: parkapp
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: parkapp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parkapp -d parkapp_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          # prisma generate loads prisma7.config.ts, which requires DATABASE_URL,
+          # but it never connects. Placeholder for the build only; not a credential.
+          DATABASE_URL: postgresql://build:build@localhost:5432/build
+        run: npm run build
+
+      - name: Create database roles
+        run: |
+          docker exec -i ${{ job.services.postgres.id }} \
+            psql -U parkapp -d parkapp_ci -v ON_ERROR_STOP=1 < db/bootstrap/roles.sql
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U parkapp -d parkapp_ci -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE parkapp_migrator LOGIN PASSWORD 'ci_migrator_password'" \
+            -c "ALTER DATABASE parkapp_ci OWNER TO parkapp_migrator"
+
+      - name: Apply migrations as parkapp_migrator
+        env:
+          DATABASE_URL: postgresql://parkapp_migrator:ci_migrator_password@localhost:5432/parkapp_ci?schema=public
+        run: npx prisma migrate deploy
+
+      - name: Test
+        env:
+          PORT: 3000
+          DATABASE_URL: postgresql://parkapp:ci_only_password@localhost:5432/parkapp_ci?schema=public
+        run: npm test
+
+      - name: Package
+        id: package
+        run: |
+          SHORT="${GITHUB_SHA::7}"
+          npm prune --omit=dev
+          test -x node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x
+          printf 'commit=%s\nrun=%s\nbuilt=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%FT%TZ)" > BUILD_INFO
+          tar --create --gzip --file "../$SHORT.tar.gz" --owner=0 --group=0 --numeric-owner \
+            dist node_modules package.json package-lock.json prisma prisma7.config.ts BUILD_INFO
+          SHA256="$(sha256sum "../$SHORT.tar.gz" | cut -d ' ' -f 1)"
+          echo "short_sha=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: ${{ steps.package.outputs.short_sha }}.tar.gz
+          retention-days: 1
+
+  publish:
+    name: Upload to S3
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release
+
+      - name: Verify artifact
+        env:
+          SHORT: ${{ needs.build.outputs.short_sha }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: echo "$SHA256  $SHORT.tar.gz" | sha256sum --check --strict
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+
+      - name: Upload artifact
+        env:
+          BUCKET: ${{ secrets.AWS_ARTIFACT_BUCKET }}
+          SHORT: ${{ needs.build.outputs.short_sha }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          aws s3 cp "$SHORT.tar.gz" "s3://$BUCKET/releases/$SHORT.tar.gz" --only-show-errors
+          {
+            echo "## Release artifact"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Commit | \`$SHORT\` |"
+            echo "| SHA-256 | \`$SHA256\` |"
+            echo "| S3 key | \`releases/$SHORT.tar.gz\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
