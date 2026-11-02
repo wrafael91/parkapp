@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43) |
-| Versión | 1.3 — 30 de octubre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60) |
+| Versión | 1.4 — 2 de noviembre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -409,6 +409,7 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | [0005](adr/0005-https-y-dominio.md) | HTTPS con Let's Encrypt en Nginx y dominio en Cloudflare |
 | [0006](adr/0006-secretos-en-parameter-store.md) | Secretos en Parameter Store y usuarios de base de datos separados |
 | [0007](adr/0007-acceso-y-despliegue-sin-ssh.md) | Administración y despliegue sin SSH ni llaves de larga duración |
+| [0008](adr/0008-contrato-de-la-api.md) | Contrato de la API en español y código en inglés |
 
 ## Historial de cambios
 
@@ -419,3 +420,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | 1.1 | 20 de octubre de 2026 | El componente Estadías incluye la corrección por reemplazo (FR-21, FR-22); rango de reglas de integridad hasta RI-19. |
 | 1.2 | 22 de octubre de 2026 | Diagrama de despliegue: la cuenta de AWS contiene la región, y AWS Budgets queda a nivel de cuenta. |
 | 1.3 | 30 de octubre de 2026 | Estructura de `backend/src` (5.5, #34). Roles y matriz de permisos de la base de datos (6.5, #59). Ajustes de la implementación en AWS (#43): nombres de los grupos de seguridad, Deny explícito en el rol del servidor, etiqueta `Proyecto=parkapp`, bucket solo con HTTPS, `environment:` excluido del despliegue y reencendido de RDS a los 7 días. |
+| 1.4 | 2 de noviembre de 2026 | ADR 0008: contrato de la API en español y código en inglés (#60). |
