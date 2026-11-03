@@ -47,7 +47,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            web/package-lock.json
 
       - run: npm ci
 
@@ -57,6 +59,13 @@ jobs:
           # but it never connects. Placeholder for the build only; not a credential.
           DATABASE_URL: postgresql://build:build@localhost:5432/build
         run: npm run build
+
+      # Same job as the API: its npm scripts run here, without AWS credentials.
+      - name: Build web
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
 
       - name: Create database roles
         run: |
@@ -84,9 +93,12 @@ jobs:
           SHORT="${GITHUB_SHA::7}"
           npm prune --omit=dev
           test -x node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x
+          # The web build goes in the same release as the API (Nginx serves current/web).
+          cp -R ../web/dist web
+          test -f web/index.html
           printf 'commit=%s\nrun=%s\nbuilt=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%FT%TZ)" > BUILD_INFO
           tar --create --gzip --file "../$SHORT.tar.gz" --owner=0 --group=0 --numeric-owner \
-            dist node_modules package.json package-lock.json prisma prisma7.config.ts BUILD_INFO
+            dist node_modules package.json package-lock.json prisma prisma7.config.ts web BUILD_INFO
           SHA256="$(sha256sum "../$SHORT.tar.gz" | cut -d ' ' -f 1)"
           echo "short_sha=$SHORT" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
