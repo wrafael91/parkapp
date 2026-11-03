@@ -22,6 +22,12 @@ El servidor necesita administración ocasional, y cada cambio en `main` debe des
 ## Consecuencias
 
 - No queda ningún puerto de administración abierto ni ninguna credencial permanente de AWS fuera de AWS.
-- El agente de SSM viene instalado en Amazon Linux 2023 y solo necesita salida HTTPS, ya permitida en `sg-web`.
+- El agente de SSM viene instalado en Amazon Linux 2023 y solo necesita salida HTTPS, ya permitida en `parkapp-web`.
 - Si Session Manager fallara, no habría otra vía de acceso. En ese caso, el servidor se reconstruye desde el repositorio y Parameter Store; los datos están en RDS y no se pierden.
 - El proveedor OIDC y el rol se configuran en el Sprint 2.
+
+## Actualización del 31 de octubre de 2026
+
+El primer despliegue falló con `Not authorized to perform sts:AssumeRoleWithWebIdentity`. El evento rechazado en CloudTrail mostró que GitHub enviaba el `sub` `repo:wrafael91@61667502/parkapp@1403355272:ref:refs/heads/main`, y no `repo:wrafael91/parkapp:ref:refs/heads/main`, como esperaba el rol. Desde 2026, en los repositorios creados después del 15 de julio, GitHub incluye en el `sub` los ID inmutables del dueño y del repositorio, para que quien reutilice el nombre de un repositorio borrado no herede la confianza que se le dio ([anuncio de GitHub](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/)).
+
+El rol se cambió para aceptar solo ese `sub`, con `StringEquals`. La decisión no cambia: el despliegue sigue limitado a este repositorio y a la rama `main`, ahora con una restricción más fuerte. Los ID no son secretos, porque los publica la API de GitHub.

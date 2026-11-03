@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60) |
-| Versión | 1.4 — 2 de noviembre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64) |
+| Versión | 1.5 — 2 de noviembre de 2026 |
 
 Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -228,7 +228,7 @@ Las pruebas van junto al código que prueban, con el sufijo .test.ts.
 
 ## 6. Despliegue en AWS
 
-Esta sección es la vista de despliegue: dónde corre cada contenedor de la sección 4 y qué controles lo protegen. Las decisiones se justifican en los ADR 0004 a 0007.
+Esta sección es la vista de despliegue: dónde corre cada contenedor de la sección 4 y qué controles lo protegen. Las decisiones se justifican en los ADR 0004 a 0007 y 0009.
 
 ### 6.1 Diagrama de despliegue
 
@@ -259,6 +259,7 @@ flowchart TB
                 direction LR
                 ssm["<b>Systems Manager</b><br/>Session Manager · Run Command<br/>Parameter Store"]
                 s3["<b>Amazon S3</b><br/>Artefactos de despliegue"]
+                backup["<b>AWS Backup</b><br/>Instantánea diaria de RDS<br/>Se conserva 7 días"]
             end
         end
     end
@@ -271,13 +272,14 @@ flowchart TB
     gh -- "OIDC: ordena el despliegue" --> ssm
     gh -- "OIDC: sube el artefacto" --> s3
     budgets -. "detiene EC2 y RDS" .-> ec2
+    rds -. "se respalda a diario" .-> backup
 
     classDef ext fill:#999999,stroke:#6b6b6b,color:#ffffff
     classDef comp fill:#438dd5,stroke:#2e6295,color:#ffffff
     classDef svc fill:#85bbf0,stroke:#5d82a8,color:#000000
     class usuario,dns,gh ext
     class ec2,rds comp
-    class ssm,s3,budgets svc
+    class ssm,s3,budgets,backup svc
     style fuera fill:none,stroke:none
 ```
 
@@ -290,7 +292,8 @@ Desde internet solo se llega al puerto 443 del servidor. La base de datos no tie
 | Región | us-east-1 (Norte de Virginia). | NFR-23 · ADR 0004 |
 | Red (VPC) | `10.0.0.0/16`. Una subred pública (`10.0.1.0/24`, us-east-1a) con salida a internet. Dos subredes privadas sin ruta a internet: `10.0.11.0/24` en us-east-1a y `10.0.12.0/24` en us-east-1b. RDS exige subredes en dos zonas aunque la base de datos use una sola. Sin NAT Gateway. | NFR-09, NFR-23 |
 | Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Lleva la etiqueta `Proyecto=parkapp`, que el rol de GitHub Actions exige para enviarle comandos (sección 6.4). Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. | NFR-09, NFR-17 · ADR 0002, 0004 |
-| Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos con 7 días de retención y recuperación a un punto en el tiempo. Protección contra borrado. Respaldo diario de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). | NFR-09, NFR-18 · ADR 0004 |
+| Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos de RDS con 1 día de retención, el máximo del plan gratuito, que dan la recuperación a un punto en el tiempo; los 7 días los cubre AWS Backup (fila siguiente). Protección contra borrado. Ventana de respaldo de RDS de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). | NFR-09, NFR-18 · ADR 0004, 0009 |
+| Respaldos | AWS Backup, plan `parkapp-diario`: una instantánea de la base de datos cada día a las 4:30 a. m., hora de Bogotá, que se borra sola a los 7 días, en la bóveda `parkapp-respaldos`. Con los respaldos de RDS, se puede restaurar cualquiera de los últimos 7 días y cualquier segundo de las últimas 24 horas. | NFR-18 · ADR 0009 |
 | Secretos | Parameter Store, con parámetros `SecureString` bajo `/parkapp/prod/`. | NFR-10 · ADR 0006 |
 | Artefactos | Bucket S3 privado, con bloqueo de acceso público, cifrado SSE-S3 y una política que rechaza las peticiones sin TLS. Los artefactos se borran a los 30 días. | NFR-09 · ADR 0007 |
 | Dominio y DNS | Dominio en Cloudflare Registrar. Un registro A apunta a la IP elástica, sin el proxy de Cloudflare. | ADR 0005 |
@@ -309,7 +312,7 @@ Los grupos usan el prefijo `parkapp-` porque AWS no acepta nombres que empiecen 
 
 El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan por los grupos de seguridad.
 
-**IP real del cliente.** Nginx agrega la IP del cliente en `X-Forwarded-For`, y Express solo confía en el proxy local (`trust proxy = loopback`). Así un cliente no puede falsificar su IP para evadir el límite de peticiones (NFR-08) ni para alterar lo que se registra en la bitácora (NFR-12).
+**IP real del cliente.** Nginx reemplaza `X-Forwarded-For` por la IP de la conexión (`$remote_addr`), en lugar de agregarla a lo que envíe el cliente, y Express solo confía en el proxy local (`trust proxy = loopback`). Así un cliente no puede falsificar su IP para evadir el límite de peticiones (NFR-08) ni para alterar lo que se registra en la bitácora (NFR-12).
 
 ### 6.4 Identidades y permisos
 
@@ -320,6 +323,7 @@ El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan p
 | Rol del servidor EC2 | Conectarse a Systems Manager (`AmazonSSMManagedInstanceCore`), leer los parámetros de `/parkapp/prod/` y descargar del bucket de artefactos. | No puede modificar otros recursos de AWS. `AmazonSSMManagedInstanceCore` permite leer cualquier parámetro de la cuenta, así que la política propia del rol agrega un Deny explícito sobre todo parámetro fuera de `/parkapp/prod/`; en IAM, un Deny explícito siempre prevalece. |
 | Rol de GitHub Actions | Subir al bucket de artefactos y ejecutar el documento `ParkApp-Deploy` en el servidor. | Solo lo puede asumir el repositorio `wrafael91/parkapp` desde la rama `main`, y con credenciales temporales (OIDC). Solo ejecuta `ParkApp-Deploy`, y solo en instancias con la etiqueta `Proyecto=parkapp`. |
 | Rol de AWS Budgets | Detener la instancia EC2 y la base de datos. | Solo sobre esos dos recursos. |
+| Rol de AWS Backup | Crear las instantáneas de la base de datos según el plan diario y borrarlas al vencer. | Solo lo asume AWS Backup. Usa la política administrada de AWS Backup con un Deny explícito sobre `rds:ModifyDBInstance` y `rds:ModifyDBCluster`, porque esa política permite modificar cualquier base de datos de la cuenta (ADR 0009). |
 
 ### 6.5 Usuarios de la base de datos
 
@@ -362,15 +366,16 @@ Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus s
 4. Con SSM Run Command, ejecuta en el servidor el documento `ParkApp-Deploy`. Este descarga el artefacto, aplica las migraciones con `parkapp_migrator`, activa la nueva versión y reinicia el servicio.
 5. Verifica que `GET /api/salud` responda. Si falla, el documento vuelve a la versión anterior, que se conserva en el servidor.
 
-Las migraciones se diseñan compatibles con la versión anterior, para que volver atrás no obligue a deshacerlas. Antes de una migración que cambie tablas existentes, se toma una instantánea manual de la base de datos.
+Las migraciones se diseñan compatibles con la versión anterior, para que volver atrás no obligue a deshacerlas. Antes de una migración que cambie tablas existentes, se toma un respaldo bajo demanda con AWS Backup, que vence a los 7 días (ADR 0009).
 
-El job de despliegue no usa `environment:` de GitHub Actions. Con esa opción, GitHub cambia el formato del `sub` del token OIDC, y el rol de AWS, que solo acepta `repo:wrafael91/parkapp:ref:refs/heads/main`, deja de funcionar.
+El job de despliegue no usa `environment:` de GitHub Actions. Con esa opción, GitHub cambia el `sub` del token OIDC y el rol de AWS deja de aceptarlo. El rol solo acepta `repo:wrafael91@61667502/parkapp@1403355272:ref:refs/heads/main`: desde 2026, en los repositorios creados después del 15 de julio, GitHub incluye en el `sub` los ID inmutables del dueño y del repositorio, para que un nombre reutilizado no herede la confianza (ADR 0007).
 
 ### 6.7 Disponibilidad y respaldos
 
 - AWS compromete 99,5 % de disponibilidad para una instancia individual de EC2 y otro 99,5 % para una base de datos de RDS en una sola zona. Combinados dan cerca de 99,0 %, el mínimo de NFR-16. La disponibilidad real suele ser mayor; el riesgo principal son los propios despliegues y el mantenimiento, y por eso se programan de madrugada.
 - Si la API falla, systemd la reinicia en segundos (NFR-17).
-- Una restauración crea una nueva instancia de RDS desde un punto en el tiempo. Después se actualiza la dirección de la base de datos en `/parkapp/prod/` y se reinicia la API. El simulacro se hace y se documenta en el Sprint 3 (NFR-18).
+- Una restauración crea una nueva instancia de RDS, desde la instantánea diaria de AWS Backup (cualquiera de los últimos 7 días) o desde un punto en el tiempo de las últimas 24 horas (ADR 0009). Hay que revisar que la instancia nueva quede con el grupo de subredes de la base, el grupo de seguridad `parkapp-db` y el grupo de parámetros `parkapp-postgres16`. Después se actualiza la dirección de la base de datos en `/parkapp/prod/` y se reinicia la API. El simulacro se hace y se documenta en el Sprint 3 (NFR-18).
+- Todavía no hay aviso si falla un respaldo de AWS Backup. Mientras el monitoreo del Sprint 3 no lo incluya, se revisa con `aws backup list-backup-jobs`.
 - El monitoreo externo con el que se mide NFR-16 se define en el Sprint 3.
 
 ### 6.8 Costo
@@ -382,9 +387,10 @@ El job de despliegue no usa `environment:` de GitHub Actions. Con esa opción, G
 | RDS `db.t4g.micro` y 20 GB | 13,98 |
 | Parameter Store, Systems Manager, OIDC, Budgets y CloudTrail | 0,00 |
 | S3 | menos de 0,01 |
+| AWS Backup: instantáneas de la base de datos (ADR 0009) | unos centavos |
 | **Total** | **24,40** |
 
-Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#/estimate?id=3c7ee30438426c32204b0e8a2516dfa7c770911f), en Norte de Virginia y con precios bajo demanda. Queda por debajo del límite de 30 USD de NFR-23. El dominio se paga aparte: 10,46 USD al año.
+Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#/estimate?id=3c7ee30438426c32204b0e8a2516dfa7c770911f), en Norte de Virginia y con precios bajo demanda. Queda por debajo del límite de 30 USD de NFR-23. El dominio, `rolopark.com`, se paga aparte: 11,17 USD al año.
 
 **Cuenta y vigencia.** La cuenta usa el plan gratuito de AWS: 100 USD en créditos (hasta 200 con las actividades de inicio) durante 6 meses, sin cobros a la tarjeta. Cuando se agotan los créditos o se cumple el plazo, la cuenta se cierra. El despliegue se mantiene al menos hasta que se publique la nota final. Si hay que apagarlo antes, los recursos se eliminan en lugar de detenerse: un servidor detenido sigue pagando el disco y la IP, y RDS vuelve a encender sola una base de datos detenida a los 7 días.
 
@@ -410,6 +416,7 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | [0006](adr/0006-secretos-en-parameter-store.md) | Secretos en Parameter Store y usuarios de base de datos separados |
 | [0007](adr/0007-acceso-y-despliegue-sin-ssh.md) | Administración y despliegue sin SSH ni llaves de larga duración |
 | [0008](adr/0008-contrato-de-la-api.md) | Contrato de la API en español y código en inglés |
+| [0009](adr/0009-respaldos-con-aws-backup.md) | Respaldos diarios con AWS Backup por el límite del plan gratuito |
 
 ## Historial de cambios
 
@@ -421,3 +428,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | 1.2 | 22 de octubre de 2026 | Diagrama de despliegue: la cuenta de AWS contiene la región, y AWS Budgets queda a nivel de cuenta. |
 | 1.3 | 30 de octubre de 2026 | Estructura de `backend/src` (5.5, #34). Roles y matriz de permisos de la base de datos (6.5, #59). Ajustes de la implementación en AWS (#43): nombres de los grupos de seguridad, Deny explícito en el rol del servidor, etiqueta `Proyecto=parkapp`, bucket solo con HTTPS, `environment:` excluido del despliegue y reencendido de RDS a los 7 días. |
 | 1.4 | 2 de noviembre de 2026 | ADR 0008: contrato de la API en español y código en inglés (#60). |
+| 1.5 | 2 de noviembre de 2026 | ADR 0009: respaldos diarios con AWS Backup, porque el plan gratuito limita la retención de RDS a 1 día (6.1, 6.2, 6.4, 6.6, 6.7 y 6.8). `sub` de OIDC con los ID inmutables del repositorio (6.6 y ADR 0007). Correcciones: Nginx reemplaza `X-Forwarded-For` (6.3) y costo del dominio `rolopark.com` (6.8). (#64) |
