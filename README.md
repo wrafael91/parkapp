@@ -6,7 +6,7 @@ Parking management system for small and medium off-street parking lots in Bogot√
 
 Undergraduate thesis project, Software Engineering, Polit√©cnico Grancolombiano (2026).
 
-**Stack:** Node.js, Express, Prisma, PostgreSQL, React, AWS (EC2, RDS, Systems Manager).
+**Stack:** Node.js, Express, Prisma, PostgreSQL, React (Vite), Nginx, AWS (EC2, RDS, Systems Manager).
 
 ## Documentation (in Spanish)
 
@@ -52,3 +52,21 @@ Get-Content db/bootstrap/roles.sql | docker exec -i parkapp-db psql -U parkapp -
 ```
 
 On macOS or Linux: `docker exec -i parkapp-db psql -U parkapp -d parkapp_dev -v ON_ERROR_STOP=1 < db/bootstrap/roles.sql`
+
+## Run the web app locally
+
+Requirements: the API running on `http://127.0.0.1:3000` (see above).
+
+```bash
+cd web
+npm install
+npm run dev               # web app on http://localhost:5173
+```
+
+Vite forwards `/api` to the local API, so the page and the API share the same origin, as they do in production behind Nginx (ADR 0002). The page shows whether the API is available.
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Runs the web app and reloads it on every change |
+| `npm run build` | Type-checks and builds the web app to `dist/` |
+| `npm run preview` | Serves the build from `dist/` |
