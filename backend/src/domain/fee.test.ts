@@ -39,7 +39,7 @@ describe("calculateFee: rules", () => {
   it("charges every full minute at the rate (BR-05)", () => {
     expect(feeFor(after(10))).toEqual({ fullMinutes: 10, subtotal: 2300, roundingAdjustment: 0, total: 2300 });
   });
-  
+
   it("does not charge the seconds of an unfinished minute (BR-06)", () => {
     expect(feeFor(after(10, 59, 999))).toEqual({ fullMinutes: 10, subtotal: 2300, roundingAdjustment: 0, total: 2300 });
   });
@@ -47,7 +47,7 @@ describe("calculateFee: rules", () => {
   it("rounds the total down to the nearest multiple of $50 (BR-07)", () => {
     expect(feeFor(after(1))).toEqual({ fullMinutes: 1, subtotal: 230, roundingAdjustment: 30, total: 200 });
   });
-  
+
   it("charges nothing while the stay is shorter than the grace period (BR-08)", () => {
     expect(feeFor(after(9), CAR_RATE, 10)).toEqual({ fullMinutes: 9, subtotal: 0, roundingAdjustment: 0, total: 0 });
   });
@@ -60,7 +60,6 @@ describe("calculateFee: rules", () => {
     expect(feeFor(after(11), CAR_RATE, 10)).toEqual({ fullMinutes: 11, subtotal: 2530, roundingAdjustment: 30, total: 2500 });
   });
 });
-
 
 describe("calculateFee: invalid input", () => {
   it("rejects an exit before the entry (RI-05)", () => {
