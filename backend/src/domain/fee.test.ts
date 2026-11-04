@@ -62,3 +62,28 @@ describe("calculateFee: rules", () => {
 });
 
 
+describe("calculateFee: invalid input", () => {
+  it("rejects an exit before the entry (RI-05)", () => {
+    expect(() => feeFor(after(0, 0, -1))).toThrow(RangeError);
+  });
+
+  it("accepts an exit at the same instant as the entry", () => {
+    expect(feeFor(ENTRY)).toEqual({ fullMinutes: 0, subtotal: 0, roundingAdjustment: 0, total: 0 });
+  });
+
+  it("rejects an invalid entry or exit time", () => {
+    const invalid = new Date("not a date");
+    expect(() => feeFor(invalid)).toThrow(RangeError);
+    expect(() =>
+      calculateFee({ entryTime: invalid, exitTime: after(10), valuePerMinute: CAR_RATE, gracePeriodMinutes: 0 }),
+    ).toThrow(RangeError);
+  });
+
+  it.each([0, -230, 230.5, Number.NaN])("rejects a rate of %s per minute (RI-09)", (rate) => {
+    expect(() => feeFor(after(10), rate)).toThrow(RangeError);
+  });
+
+  it.each([-1, 2.5, Number.NaN])("rejects a grace period of %s minutes (RI-10)", (grace) => {
+    expect(() => feeFor(after(10), CAR_RATE, grace)).toThrow(RangeError);
+  });
+});
