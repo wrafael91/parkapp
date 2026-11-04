@@ -13,7 +13,7 @@ export interface Fee {
 }
 
 export function calculateFee(input: FeeInput): Fee {
-  const fullMinutes = (input.exitTime.getTime() - input.entryTime.getTime()) / 60_000;
+  const fullMinutes = Math.floor((input.exitTime.getTime() - input.entryTime.getTime()) / 60_000);
   const subtotal = fullMinutes * input.valuePerMinute;
   return { fullMinutes, subtotal, roundingAdjustment: 0, total: subtotal };
 }
