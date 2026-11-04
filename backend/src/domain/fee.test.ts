@@ -39,6 +39,10 @@ describe("calculateFee: rules", () => {
   it("charges every full minute at the rate (BR-05)", () => {
     expect(feeFor(after(10))).toEqual({ fullMinutes: 10, subtotal: 2300, roundingAdjustment: 0, total: 2300 });
   });
+  
+  it("does not charge the seconds of an unfinished minute (BR-06)", () => {
+    expect(feeFor(after(10, 59, 999))).toEqual({ fullMinutes: 10, subtotal: 2300, roundingAdjustment: 0, total: 2300 });
+  });
 });
 
 
