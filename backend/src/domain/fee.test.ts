@@ -43,6 +43,10 @@ describe("calculateFee: rules", () => {
   it("does not charge the seconds of an unfinished minute (BR-06)", () => {
     expect(feeFor(after(10, 59, 999))).toEqual({ fullMinutes: 10, subtotal: 2300, roundingAdjustment: 0, total: 2300 });
   });
+
+  it("rounds the total down to the nearest multiple of $50 (BR-07)", () => {
+    expect(feeFor(after(1))).toEqual({ fullMinutes: 1, subtotal: 230, roundingAdjustment: 30, total: 200 });
+  });
 });
 
 
