@@ -87,3 +87,22 @@ describe("calculateFee: invalid input", () => {
     expect(() => feeFor(after(10), CAR_RATE, grace)).toThrow(RangeError);
   });
 });
+
+// RI-12 (docs/modelo-datos.md) becomes a CHECK on `comprobante` in S1-05 (Sprint 3).
+// Until then, this test guards it for every stay of up to one day, with the 2026
+// legal maximums for cars and motorcycles, without and with Sello Oro
+// (docs/reglas-de-negocio.md, section 3).
+describe("calculateFee: receipt integrity (RI-12)", () => {
+  it("keeps total = subtotal - adjustment, an adjustment of $0 to $49 and a multiple of $50 for every minute of a day", () => {
+    for (const rate of [CAR_RATE, MOTORCYCLE_RATE, 253, 177]) {
+      for (let minutes = 0; minutes <= 24 * 60; minutes++) {
+        const { subtotal, roundingAdjustment, total } = feeFor(after(minutes), rate, GRACE_MINUTES);
+        const stay = `rate ${rate}, ${minutes} min`;
+        expect(total, stay).toBe(subtotal - roundingAdjustment);
+        expect(roundingAdjustment, stay).toBeGreaterThanOrEqual(0);
+        expect(roundingAdjustment, stay).toBeLessThanOrEqual(49);
+        expect(total % 50, stay).toBe(0);
+      }
+    }
+  });
+});
