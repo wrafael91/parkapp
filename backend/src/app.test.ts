@@ -18,7 +18,7 @@ describe("createApp", () => {
     expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
   });
 
-    it.each([
+  it.each([
     ["get", "/api/no-existe"],
     ["post", "/api/salud"],
   ] as const)("answers a %s to %s with 404 NO_ENCONTRADO in JSON", async (method, path) => {
