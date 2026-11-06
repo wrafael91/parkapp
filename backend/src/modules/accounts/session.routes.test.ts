@@ -202,3 +202,57 @@ describe("GET /api/sesion", () => {
     });
   });
 });
+
+describe("DELETE /api/sesion (FR-02)", () => {
+  it("revokes the session and clears the cookie, so the old cookie gets 401", async () => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(app, db);
+
+      const response = await request(app)
+        .delete("/api/sesion")
+        .set("Origin", ORIGIN)
+        .set("Cookie", cookie);
+
+      expect(response.status).toBe(204);
+      const cleared = sessionCookie(response);
+      expect(cleared).toMatch(/^sesion=;/);
+      for (const attribute of [
+        "Path=/api",
+        "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+        "HttpOnly",
+        "Secure",
+        "SameSite=Strict",
+      ]) {
+        expect(cleared).toContain(`; ${attribute}`);
+      }
+      // US-01: reusing the session after signing out gets 401.
+      const after = await request(app).get("/api/sesion").set("Cookie", cookie);
+      expect(after.status).toBe(401);
+    });
+  });
+
+  it("answers 204 without a session cookie", async () => {
+    await withApp(async (app) => {
+      const response = await request(app).delete("/api/sesion").set("Origin", ORIGIN);
+
+      expect(response.status).toBe(204);
+    });
+  });
+
+  it("rejects a sign-out from another site and keeps the session (section 7.4)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(app, db);
+
+      const response = await request(app)
+        .delete("/api/sesion")
+        .set("Origin", "https://ejemplo.net")
+        .set("Cookie", cookie);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
+      const after = await request(app).get("/api/sesion").set("Cookie", cookie);
+      expect(after.status).toBe(200);
+    });
+  });
+});
