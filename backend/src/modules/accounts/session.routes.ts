@@ -2,8 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import type { PrismaClient, Role } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
-import { SESSION_COOKIE, sessionCookieOptions } from "./session-cookie.js";
-import { signIn, type SessionUser } from "./session.service.js";
+import { readSessionToken, SESSION_COOKIE, sessionCookieOptions } from "./session-cookie.js";
+import { authenticate, signIn, type SessionUser } from "./session.service.js";
 
 // ADR 0008: the contract is in Spanish, and this module translates it.
 const signInBody = z.object({
@@ -55,6 +55,20 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     }
     res.cookie(SESSION_COOKIE, result.token, sessionCookieOptions);
     res.status(200).json({ usuario: toUsuario(result.user) });
+  });
+
+    // The web app asks on load whether there is an active session.
+  router.get("/", async (req, res) => {
+    const token = readSessionToken(req.get("Cookie"));
+    const user =
+      token === null
+        ? null
+        : await prisma.$transaction((db) => authenticate(db, { token, now: new Date() }));
+    if (user === null) {
+      sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+      return;
+    }
+    res.status(200).json({ usuario: toUsuario(user) });
   });
 
   return router;
