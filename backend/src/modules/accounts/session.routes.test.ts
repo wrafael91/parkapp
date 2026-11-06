@@ -72,6 +72,13 @@ function tokenOf(cookie: string): string {
   return cookie.slice("sesion=".length, cookie.indexOf(";"));
 }
 
+// Signs in and returns the Cookie header the browser would send back.
+async function signedIn(app: Express, db: Prisma.TransactionClient) {
+  const user = await createUser(db);
+  const response = await postSession(app);
+  return { user, cookie: `sesion=${tokenOf(sessionCookie(response))}` };
+}
+
 describe("POST /api/sesion (FR-01)", () => {
   it("signs in, answers with the user in Spanish and sets the session cookie", async () => {
     await withApp(async (app, db) => {
@@ -157,6 +164,41 @@ describe("POST /api/sesion (FR-01)", () => {
       expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
       expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
       expect(await db.auditEvent.count({ where: { ip: IP } })).toBe(0);
+    });
+  });
+});
+
+describe("GET /api/sesion", () => {
+  it("answers with the user of the active session", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedIn(app, db);
+
+      const response = await request(app).get("/api/sesion").set("Cookie", cookie);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        usuario: {
+          id: user.id,
+          nombre: "Administradora de rutas",
+          rol: "ADMINISTRADOR",
+          debeCambiarContrasena: true,
+        },
+      });
+    });
+  });
+
+  it.each([
+    ["no cookie", undefined],
+    ["an unknown token", "sesion=token-inventado"],
+  ])("answers a request with %s with 401 NO_AUTENTICADO", async (_case, cookie) => {
+    await withApp(async (app, db) => {
+      await signedIn(app, db);
+
+      const req = request(app).get("/api/sesion");
+      const response = await (cookie === undefined ? req : req.set("Cookie", cookie));
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
     });
   });
 });
