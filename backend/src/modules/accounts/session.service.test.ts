@@ -4,7 +4,7 @@ import { createPrismaClient } from "../../db.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { hashPassword } from "./password.js";
 import { hashSessionToken } from "./session-token.js";
-import { signIn } from "./session.service.js";
+import { authenticate, signIn, signOut } from "./session.service.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -134,6 +134,67 @@ describe("signIn (FR-01, NFR-04)", () => {
       );
       expect(logged).not.toContain(PASSWORD);
       expect(logged).not.toContain(result.token);
+    });
+  });
+});
+
+describe("authenticate and signOut (NFR-04, FR-02)", () => {
+  async function signedIn(db: Prisma.TransactionClient): Promise<string> {
+    await createUser(db);
+    const result = await signIn(db, { email: EMAIL, password: PASSWORD, ip: IP, now: NOW });
+    if (!result.ok) throw new Error("sign-in failed");
+    return result.token;
+  }
+
+  it("finds the user of an active session and refreshes its last activity", async () => {
+    await asApp(async (db) => {
+      const token = await signedIn(db);
+      const later = new Date(NOW.getTime() + 20 * MINUTE);
+
+      const user = await authenticate(db, { token, now: later });
+
+      expect(user?.name).toBe("Administradora de prueba");
+      const session = await db.session.findUniqueOrThrow({
+        where: { tokenHash: hashSessionToken(token) },
+      });
+      expect(session.lastActivityAt).toEqual(later);
+    });
+  });
+
+  it("rejects an unknown token", async () => {
+    await asApp(async (db) => {
+      await signedIn(db);
+
+      expect(await authenticate(db, { token: "token-inventado", now: NOW })).toBeNull();
+    });
+  });
+
+  it("rejects a session after 30 minutes without activity", async () => {
+    await asApp(async (db) => {
+      const token = await signedIn(db);
+
+      const user = await authenticate(db, { token, now: new Date(NOW.getTime() + 30 * MINUTE) });
+
+      expect(user).toBeNull();
+    });
+  });
+
+  it("rejects a session after signing out", async () => {
+    await asApp(async (db) => {
+      const token = await signedIn(db);
+
+      await signOut(db, { token, now: new Date(NOW.getTime() + MINUTE) });
+
+      expect(await authenticate(db, { token, now: new Date(NOW.getTime() + 2 * MINUTE) })).toBeNull();
+    });
+  });
+
+  it("rejects the session of an account deactivated after sign-in (NFR-04)", async () => {
+    await asApp(async (db) => {
+      const token = await signedIn(db);
+      await db.user.update({ where: { email: EMAIL }, data: { active: false } });
+
+      expect(await authenticate(db, { token, now: NOW })).toBeNull();
     });
   });
 });
