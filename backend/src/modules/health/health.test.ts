@@ -16,7 +16,7 @@ describe("GET /api/salud", () => {
   });
 
   it("returns 200 when the database responds", async () => {
-    const response = await request(createApp(prisma)).get("/api/salud");
+    const response = await request(createApp(prisma, { allowedOrigin: config.appOrigin })).get("/api/salud");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ estado: "ok" });
@@ -26,7 +26,7 @@ describe("GET /api/salud", () => {
   it("returns 503 without internal details when the database is unreachable", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const response = await request(createApp(unreachablePrisma)).get("/api/salud");
+    const response = await request(createApp(unreachablePrisma, { allowedOrigin: config.appOrigin })).get("/api/salud");
 
     expect(response.status).toBe(503);
     expect(response.body).toEqual({ estado: "no_disponible" });
