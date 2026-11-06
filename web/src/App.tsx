@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 
 // GET, POST and DELETE /api/sesion (ADR 0008), with a relative URL and the
 // default fetch: the page and the API share the origin, so the browser sends
@@ -41,15 +41,39 @@ export default function App() {
       <h1>RoloPark</h1>
       {session.status === "checking" && <p>Comprobando la sesión…</p>}
       {session.status === "unavailable" && <p>No se pudo conectar con el servidor.</p>}
-      {session.status === "signedOut" && <SignInForm />}
+      {session.status === "signedOut" && (
+        <SignInForm onSignedIn={(user) => setSession({ status: "signedIn", user })} />
+      )}
       {session.status === "signedIn" && <SignedIn user={session.user} />}
     </main>
   );
 }
 
-function SignInForm() {
+const SIGN_IN_FAILED = "No se pudo iniciar sesión. Intenta de nuevo.";
+
+function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    // null when the server cannot be reached.
+    const response = await fetch(SESSION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ correo: form.get("correo"), contrasena: form.get("contrasena") }),
+    }).catch(() => null);
+    if (response?.ok) {
+      const body: { usuario: Usuario } = await response.json();
+      onSignedIn(body.usuario);
+      return;
+    }
+    // The API gives the same 401 for every rejected sign-in (US-01).
+    setError(response?.status === 401 ? "Correo o contraseña incorrectos." : SIGN_IN_FAILED);
+  }
+
   return (
-    <form>
+    <form onSubmit={handleSubmit}>
       <label>
         Correo
         <input name="correo" type="email" autoComplete="username" required />
@@ -59,6 +83,7 @@ function SignInForm() {
         <input name="contrasena" type="password" autoComplete="current-password" required />
       </label>
       <button type="submit">Iniciar sesión</button>
+      {error && <p role="alert">{error}</p>}
     </form>
   );
 }
