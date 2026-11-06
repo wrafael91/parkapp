@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { PrismaClient, Role } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
 import { readSessionToken, SESSION_COOKIE, sessionCookieOptions } from "./session-cookie.js";
-import { authenticate, signIn, type SessionUser } from "./session.service.js";
+import { authenticate, signIn, signOut, type SessionUser } from "./session.service.js";
 
 // ADR 0008: the contract is in Spanish, and this module translates it.
 const signInBody = z.object({
@@ -71,5 +71,15 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     res.status(200).json({ usuario: toUsuario(user) });
   });
 
+    // FR-02: always 204. The cookie is cleared with the same attributes it was
+  // set with, or the browser would keep it (docs/modelo-amenazas.md, 7.2).
+  router.delete("/", async (req, res) => {
+    const token = readSessionToken(req.get("Cookie"));
+    if (token !== null) {
+      await prisma.$transaction((db) => signOut(db, { token, now: new Date() }));
+    }
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
+    res.status(204).end();
+  });
   return router;
 }
