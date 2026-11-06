@@ -1,9 +1,9 @@
+import type { RequestHandler } from "express";
+
 // Allowed origin for requests that change data (docs/modelo-amenazas.md, 7.3;
 // ADR 0003). `new URL(raw).origin` normalizes the value, so comparing it with
 // the raw text rejects a trailing slash, a path, uppercase letters and a
 // default port: the browser sends the origin exactly in that normalized form.
-import type { RequestHandler } from "express";
-
 export function parseOrigin(raw: string): string {
   let url: URL;
   try {

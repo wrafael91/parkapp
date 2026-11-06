@@ -5,7 +5,7 @@ import { createApp } from "./app.js";
 const HOST = "127.0.0.1";
 
 const prisma = createPrismaClient(config.databaseUrl);
-const app = createApp(prisma, { allowedOrigin: config.appOrigin });;
+const app = createApp(prisma, { allowedOrigin: config.appOrigin });
 
 const server = app.listen(config.port, HOST, () => {
   console.log(`ParkApp API listening on http://${HOST}:${config.port}`);
