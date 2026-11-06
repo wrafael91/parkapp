@@ -57,7 +57,7 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     res.status(200).json({ usuario: toUsuario(result.user) });
   });
 
-    // The web app asks on load whether there is an active session.
+  // The web app asks on load whether there is an active session.
   router.get("/", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
     const user =
@@ -71,7 +71,7 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     res.status(200).json({ usuario: toUsuario(user) });
   });
 
-    // FR-02: always 204. The cookie is cleared with the same attributes it was
+  // FR-02: always 204. The cookie is cleared with the same attributes it was
   // set with, or the browser would keep it (docs/modelo-amenazas.md, 7.2).
   router.delete("/", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
@@ -81,5 +81,6 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
     res.status(204).end();
   });
+  
   return router;
 }
