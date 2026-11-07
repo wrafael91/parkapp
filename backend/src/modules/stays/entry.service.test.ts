@@ -179,3 +179,70 @@ describe("registerEntry rejects", () => {
     });
   });
 });
+
+describe("registerEntry with a plate already inside (BR-03, FR-09)", () => {
+  it("rejects it, records INGRESO_RECHAZADO_PLACA_ACTIVA with the rejected vehicle and creates nothing", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const first = await registerEntry(db, {
+        plate: "ABC123",
+        vehicleType: "CAR",
+        color: "Rojo",
+        userId: setup.userId,
+        ip: IP,
+        now: NOW,
+      });
+      const staysBefore = await db.stay.count();
+
+      const result = await registerEntry(db, {
+        plate: "abc 123",
+        vehicleType: "CAR",
+        color: " Azul ",
+        brand: " Renault ",
+        userId: setup.userId,
+        ip: IP,
+        now: new Date("2026-11-09T15:00:00.000Z"),
+      });
+
+      if (!first.ok) throw new Error("entry not registered");
+      expect(result).toEqual({ ok: false, reason: "plateActive" });
+      expect(await db.stay.count()).toBe(staysBefore);
+      const events = await db.auditEvent.findMany({
+        where: { action: "ENTRY_REJECTED_ACTIVE_PLATE", entity: "estadia", entityId: first.stayId },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        userId: setup.userId,
+        ip: IP,
+        detail: { tipo_vehiculo: "CARRO", color: "Azul", marca: "Renault" },
+      });
+    });
+  });
+
+  it("accepts it again once its stay is no longer active", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const first = await registerEntry(db, {
+        plate: "ABC123",
+        vehicleType: "CAR",
+        color: "Rojo",
+        userId: setup.userId,
+        ip: IP,
+        now: NOW,
+      });
+      if (!first.ok) throw new Error("entry not registered");
+      await db.stay.update({ where: { id: first.stayId }, data: { status: "CLOSED" } });
+
+      const result = await registerEntry(db, {
+        plate: "ABC123",
+        vehicleType: "CAR",
+        color: "Rojo",
+        userId: setup.userId,
+        ip: IP,
+        now: new Date("2026-11-09T18:00:00.000Z"),
+      });
+
+      expect(result.ok).toBe(true);
+    });
+  });
+});
