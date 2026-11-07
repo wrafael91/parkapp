@@ -111,3 +111,29 @@ describe("sign in", () => {
     expect(alert.textContent).toBe("No se pudo iniciar sesión. Intenta de nuevo.");
   });
 });
+
+describe("sign out", () => {
+  it("ends the session and shows the sign-in form again", async () => {
+    const signedOut = new Response(null, { status: 204 });
+    const fetchMock = stubFetch(jsonResponse(200, ACTIVE_SESSION), signedOut);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
+    await screen.findByRole("button", { name: "Iniciar sesión" });
+    // DELETE /api/sesion with a relative URL and the default fetch.
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/sesion", { method: "DELETE" });
+  });
+
+  it.each([
+    ["fails", jsonResponse(500, INTERNAL_ERROR)],
+    ["cannot be reached", new TypeError("Failed to fetch")],
+  ])("keeps the session and says so when the server %s", async (_case, answer) => {
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), answer);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo cerrar la sesión. Intenta de nuevo.");
+    screen.getByText("Sesión iniciada: Ana Pérez");
+  });
+});
