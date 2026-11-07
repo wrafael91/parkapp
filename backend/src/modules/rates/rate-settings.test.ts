@@ -107,6 +107,65 @@ describe("setRate (BR-09, BR-10)", () => {
   });
 });
 
+describe("setRate versions (BR-11, RI-07)", () => {
+  it("closes the current version of the same vehicle type and leaves the other one open", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+      const later = new Date("2026-11-07T16:00:00.000Z");
+      const firstCar = await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 200,
+        createdById,
+        now: NOW,
+      });
+      const motorcycle = await setRate(db, {
+        vehicleType: "MOTORCYCLE",
+        valuePerMinute: 150,
+        createdById,
+        now: NOW,
+      });
+
+      const secondCar = await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 220,
+        createdById,
+        now: later,
+      });
+
+      if (!firstCar.ok || !motorcycle.ok || !secondCar.ok) throw new Error("rate not created");
+      const versions = await db.rate.findMany({
+        where: { id: { in: [firstCar.rateId, motorcycle.rateId, secondCar.rateId] } },
+        orderBy: { id: "asc" },
+      });
+      expect(versions.map((rate) => rate.validTo)).toEqual([later, null, null]);
+      expect(await db.rate.count({ where: { vehicleType: "CAR", validTo: null } })).toBe(1);
+    });
+  });
+
+  it("leaves the current version open when the new value is rejected", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+      const current = await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 200,
+        createdById,
+        now: NOW,
+      });
+
+      await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 300,
+        createdById,
+        now: new Date("2026-11-07T16:00:00.000Z"),
+      });
+
+      if (!current.ok) throw new Error("rate not created");
+      const rate = await db.rate.findUniqueOrThrow({ where: { id: current.rateId } });
+      expect(rate.validTo).toBeNull();
+    });
+  });
+});
+
 describe("setRate rejects and creates nothing", () => {
   it.each([
     [
