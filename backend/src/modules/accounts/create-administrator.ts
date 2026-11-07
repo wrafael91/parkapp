@@ -1,5 +1,5 @@
 import type { Prisma } from "../../generated/prisma/client.js";
-import { hashPassword } from "./password.js";
+import { hashPassword, isAcceptableLength } from "./password.js";
 
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
@@ -11,7 +11,8 @@ interface CreateAdministratorInput {
   now: Date;
 }
 
-export type CreateAdministratorResult = { ok: true; userId: number };
+export type CreateAdministratorResult =
+  { ok: true; userId: number } | { ok: false; reason: "passwordLength" | "emailInUse" };
 
 // There is no public sign-up: the bootstrap script creates the first
 // administrator (requisitos 1.3).
@@ -19,8 +20,17 @@ export async function createAdministrator(
   db: Db,
   input: CreateAdministratorInput,
 ): Promise<CreateAdministratorResult> {
+  // NFR-02: from 15 to 64 characters.
+  if (!isAcceptableLength(input.password)) {
+    return { ok: false, reason: "passwordLength" };
+  }
   // RI-15: emails are stored in lowercase, without spaces.
   const email = input.email.trim().toLowerCase();
+  // An existing account is never overwritten: running the script twice by
+  // mistake must not reset an administrator's password.
+  if ((await db.user.findUnique({ where: { email } })) !== null) {
+    return { ok: false, reason: "emailInUse" };
+  }
   const user = await db.user.create({
     data: {
       name: input.name.trim(),
