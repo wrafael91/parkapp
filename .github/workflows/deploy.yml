@@ -61,10 +61,11 @@ jobs:
         run: npm run build
 
       # Same job as the API: its npm scripts run here, without AWS credentials.
-      - name: Build web
+      - name: Test and build web
         working-directory: web
         run: |
           npm ci
+          npm test
           npm run build
 
       - name: Create database roles
