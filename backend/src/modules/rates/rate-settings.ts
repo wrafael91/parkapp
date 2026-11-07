@@ -35,6 +35,12 @@ export async function setRate(db: Db, input: SetRateInput): Promise<SetRateResul
   if (input.valuePerMinute > legalCap.valuePerMinute) {
     return { ok: false, reason: "aboveLegalCap", legalCap: legalCap.valuePerMinute };
   }
+  // BR-11 and RI-08: a rate is never edited. The current version is closed and
+  // a new one starts, so every stay keeps the rate it entered with.
+  await db.rate.updateMany({
+    where: { vehicleType: input.vehicleType, validTo: null },
+    data: { validTo: input.now },
+  });
   const rate = await db.rate.create({
     data: {
       vehicleType: input.vehicleType,
