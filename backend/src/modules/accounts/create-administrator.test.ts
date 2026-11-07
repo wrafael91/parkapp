@@ -90,3 +90,36 @@ describe("createAdministrator (requisitos 1.3, RI-16)", () => {
     });
   });
 });
+
+describe("createAdministrator rejects", () => {
+  it.each([
+    ["shorter than 15", "a".repeat(14)],
+    ["longer than 64", "a".repeat(65)],
+  ])("a password %s characters and creates nothing (NFR-02)", async (_case, password) => {
+    await asApp(async (db) => {
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await createAdministrator(db, { ...INPUT, password });
+
+      expect(result).toEqual({ ok: false, reason: "passwordLength" });
+      expect(await db.user.findUnique({ where: { email: EMAIL } })).toBeNull();
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+
+  it("an email already in use, whatever its capitals and spaces (RI-15)", async () => {
+    await asApp(async (db) => {
+      await createAdministrator(db, INPUT);
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await createAdministrator(db, {
+        ...INPUT,
+        name: "Otra persona",
+        email: " ADMIN.Arranque@example.com",
+      });
+
+      expect(result).toEqual({ ok: false, reason: "emailInUse" });
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+});
