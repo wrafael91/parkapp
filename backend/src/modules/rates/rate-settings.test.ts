@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma } from "../../generated/prisma/client.js";
-import { setRate } from "./rate-settings.js";
+import { setGracePeriod, setRate } from "./rate-settings.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -211,6 +211,73 @@ describe("setRate rejects and creates nothing", () => {
 
       expect(result).toEqual({ ok: false, reason: "noLegalCap" });
       expect(await db.rate.count()).toBe(ratesBefore);
+    });
+  });
+});
+
+describe("setGracePeriod (BR-08, BR-11)", () => {
+  it("creates a version and records PERIODO_GRACIA_CAMBIADO as a system event (RI-18)", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+
+      const result = await setGracePeriod(db, { minutes: 5, createdById, now: NOW });
+
+      if (!result.ok) throw new Error("grace period not created");
+      const gracePeriod = await db.gracePeriod.findUniqueOrThrow({
+        where: { id: result.gracePeriodId },
+      });
+      expect(gracePeriod).toMatchObject({ minutes: 5, validFrom: NOW, validTo: null, createdById });
+      const events = await db.auditEvent.findMany({
+        where: {
+          action: "GRACE_PERIOD_CHANGED",
+          entity: "periodo_gracia",
+          entityId: result.gracePeriodId,
+        },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ userId: null, detail: null, ip: null, occurredAt: NOW });
+    });
+  });
+
+  it("closes the current version when it creates a new one (RI-07)", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+      const later = new Date("2026-11-07T16:00:00.000Z");
+      const first = await setGracePeriod(db, { minutes: 5, createdById, now: NOW });
+
+      const second = await setGracePeriod(db, { minutes: 10, createdById, now: later });
+
+      if (!first.ok || !second.ok) throw new Error("grace period not created");
+      const closed = await db.gracePeriod.findUniqueOrThrow({ where: { id: first.gracePeriodId } });
+      expect(closed.validTo).toEqual(later);
+      expect(await db.gracePeriod.count({ where: { validTo: null } })).toBe(1);
+    });
+  });
+
+  it("accepts zero minutes, which means no grace period (RI-10)", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+
+      const result = await setGracePeriod(db, { minutes: 0, createdById, now: NOW });
+
+      expect(result.ok).toBe(true);
+    });
+  });
+
+  it.each([
+    ["negative", -1],
+    ["not whole", 2.5],
+  ])("rejects a %s number of minutes and creates nothing (RI-10)", async (_case, minutes) => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+      const versionsBefore = await db.gracePeriod.count();
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await setGracePeriod(db, { minutes, createdById, now: NOW });
+
+      expect(result).toEqual({ ok: false, reason: "invalidMinutes" });
+      expect(await db.gracePeriod.count()).toBe(versionsBefore);
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
     });
   });
 });
