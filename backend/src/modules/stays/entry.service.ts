@@ -15,7 +15,10 @@ interface RegisterEntryInput {
 }
 
 export type RegisterEntryResult =
-  { ok: true; stayId: number } | { ok: false; reason: "invalidPlate" };
+  { ok: true; stayId: number } | { ok: false; reason: "invalidPlate" | "plateActive" };
+
+// The values stored in the database (schema.prisma), for the audit log.
+const VEHICLE_TYPE_VALUES: Record<VehicleType, string> = { CAR: "CARRO", MOTORCYCLE: "MOTO" };
 
 // FR-07 and BR-02. The server assigns the entry time and the user (BR-16).
 export async function registerEntry(
@@ -26,6 +29,25 @@ export async function registerEntry(
   if (plate === null) {
     return { ok: false, reason: "invalidPlate" };
   }
+  const color = input.color.trim();
+  const brand = input.brand?.trim() || null;
+  // BR-03: a plate that is already inside may be a cloned plate. The attempt is
+  // recorded with the rejected vehicle, which no stay keeps (FR-09).
+  const active = await db.stay.findFirst({ where: { plate, status: "ACTIVE" } });
+  if (active !== null) {
+    await db.auditEvent.create({
+      data: {
+        action: "ENTRY_REJECTED_ACTIVE_PLATE",
+        userId: input.userId,
+        entity: "estadia",
+        entityId: active.id,
+        detail: { tipo_vehiculo: VEHICLE_TYPE_VALUES[input.vehicleType], color, marca: brand },
+        ip: input.ip,
+        occurredAt: input.now,
+      },
+    });
+    return { ok: false, reason: "plateActive" };
+  }
   // BR-11 and RI-06: the stay keeps the rate and the grace period in force now.
   const current = {
     validFrom: { lte: input.now },
@@ -35,13 +57,12 @@ export async function registerEntry(
     where: { vehicleType: input.vehicleType, ...current },
   });
   const gracePeriod = await db.gracePeriod.findFirstOrThrow({ where: current });
-  const brand = input.brand?.trim();
   const stay = await db.stay.create({
     data: {
       plate,
       vehicleType: input.vehicleType,
-      color: input.color.trim(),
-      brand: brand ? brand : null,
+      color,
+      brand,
       entryTime: input.now,
       entryById: input.userId,
       rateId: rate.id,
