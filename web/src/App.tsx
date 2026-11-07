@@ -44,7 +44,9 @@ export default function App() {
       {session.status === "signedOut" && (
         <SignInForm onSignedIn={(user) => setSession({ status: "signedIn", user })} />
       )}
-      {session.status === "signedIn" && <SignedIn user={session.user} />}
+      {session.status === "signedIn" && (
+        <SignedIn user={session.user} onSignedOut={() => setSession({ status: "signedOut" })} />
+      )}
     </main>
   );
 }
@@ -88,11 +90,27 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   );
 }
 
-function SignedIn({ user }: { user: Usuario }) {
+function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSignOut() {
+    // null when the server cannot be reached.
+    const response = await fetch(SESSION_URL, { method: "DELETE" }).catch(() => null);
+    if (response?.ok) {
+      onSignedOut();
+      return;
+    }
+    // The session may still be active, so the page keeps showing it.
+    setError("No se pudo cerrar la sesión. Intenta de nuevo.");
+  }
+
   return (
     <>
       <p>Sesión iniciada: {user.nombre}</p>
-      <button type="button">Cerrar sesión</button>
+      <button type="button" onClick={handleSignOut}>
+        Cerrar sesión
+      </button>
+      {error && <p role="alert">{error}</p>}
     </>
   );
 }
