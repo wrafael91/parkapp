@@ -57,3 +57,41 @@ export async function setRate(db: Db, input: SetRateInput): Promise<SetRateResul
   });
   return { ok: true, rateId: rate.id };
 }
+
+interface SetGracePeriodInput {
+  minutes: number;
+  createdById: number;
+  now: Date;
+}
+
+export type SetGracePeriodResult =
+  { ok: true; gracePeriodId: number } | { ok: false; reason: "invalidMinutes" };
+
+// The bootstrap script loads the grace period (US-12 moves it to the app later).
+export async function setGracePeriod(
+  db: Db,
+  input: SetGracePeriodInput,
+): Promise<SetGracePeriodResult> {
+  // RI-10: whole minutes, zero or more (zero means no grace period).
+  if (!Number.isInteger(input.minutes) || input.minutes < 0) {
+    return { ok: false, reason: "invalidMinutes" };
+  }
+  // BR-11 and RI-08: versions are closed, never edited, as with the rate.
+  await db.gracePeriod.updateMany({
+    where: { validTo: null },
+    data: { validTo: input.now },
+  });
+  const gracePeriod = await db.gracePeriod.create({
+    data: { minutes: input.minutes, validFrom: input.now, createdById: input.createdById },
+  });
+  // A system event, like TARIFA_CAMBIADA from the script (RI-18).
+  await db.auditEvent.create({
+    data: {
+      action: "GRACE_PERIOD_CHANGED",
+      entity: "periodo_gracia",
+      entityId: gracePeriod.id,
+      occurredAt: input.now,
+    },
+  });
+  return { ok: true, gracePeriodId: gracePeriod.id };
+}
