@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -14,5 +15,10 @@ export default defineConfig({
   build: {
     // Never inline files as data: URIs, so the CSP can allow only 'self'.
     assetsInlineLimit: 0,
+  },
+  test: {
+    // The components run in jsdom, a browser simulated in Node.
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
   },
 })

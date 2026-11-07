@@ -104,6 +104,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
+      - run: npm test
 
-      # tsc -b type-checks; vite build writes dist/.
+      # tsc -b type-checks (the tests too); vite build writes dist/.
       - run: npm run build

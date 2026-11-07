@@ -81,6 +81,6 @@ export function createSessionRouter(prisma: PrismaClient): Router {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
     res.status(204).end();
   });
-  
+
   return router;
 }
