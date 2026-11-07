@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S2-13 (#8) |
-| Versión | 1.0 — 4 de noviembre de 2026 |
+| Tarea | S2-13 (#8); actualizado en S2-10 (#40) |
+| Versión | 1.1 — 7 de noviembre de 2026 |
 
 RoloPark es el nombre visible del producto desde el 3 de noviembre de 2026 (S2-23,
 #71). Los identificadores internos (repositorio, recursos de AWS, roles de la base
@@ -86,6 +86,7 @@ infraestructura interna de AWS, GitHub y Cloudflare.
 | F13 | Mantenedor → consola de AWS y Session Manager | Administración | HTTPS con MFA | LC5 |
 | F14 | certbot (servidor) ↔ Let's Encrypt | Desafío ACME y certificado | HTTPS de salida y HTTP en la ruta de validación | LC6 |
 | F15 | Mantenedor → GitHub | Cambios por pull request | HTTPS | LC4 (indirecto, por F7 y F8) |
+| F16 | Mantenedor → Session Manager → scripts de arranque → base de datos | Cuenta del primer administrador, tarifas y periodo de gracia, con el usuario `parkapp_app`; la URL se lee de Parameter Store y la contraseña llega por la entrada estándar | Session Manager con MFA; SQL con TLS | LC5 y LC3 |
 
 ## 4. Límites de confianza
 
@@ -148,7 +149,7 @@ flowchart TB
     gh -- "F8 OIDC: ordena el despliegue" --> ssm
     ssm -. "F8 ParkApp-Deploy" .-> api
     pub -. "F9 descarga" .-> s3
-    ssm -. "F10 migraciones" .-> db
+    ssm -. "F10 migraciones · F16 scripts" .-> db
     db -. "F11 instantánea diaria" .-> bk
     iam -. "F12 detiene EC2 y RDS" .-> pub
     mant -- "F13 MFA" --> iam
@@ -173,7 +174,7 @@ en su issue y en su pull request.
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
 | A-01 | F1 | I | Alguien en la red lee credenciales, la cookie de sesión o los datos de estadías. | Solo TLS 1.2 y 1.3, con suites ECDHE (secreto hacia adelante) y sin tickets de sesión. Intercambio de llaves poscuántico (`X25519MLKEM768`) contra "guardar hoy, descifrar mañana". SSL Labs A+. | NFR-09 · ADR 0005 | Implementado (S2-06) |
-| A-02 | F1, F2 | T | Degradación a HTTP para leer o alterar el tráfico (*SSL stripping*). | El puerto 80 solo redirige con 301 a `https://rolopark.com` (nombre fijo). HSTS de 2 años con `includeSubDomains` en todas las respuestas HTTPS. La cookie de sesión lleva `Secure` (sección 7). | NFR-09 · ADR 0003, 0005 | Implementado (S2-06); cookie planeada (S2-10); sin `preload`: R9 |
+| A-02 | F1, F2 | T | Degradación a HTTP para leer o alterar el tráfico (*SSL stripping*). | El puerto 80 solo redirige con 301 a `https://rolopark.com` (nombre fijo). HSTS de 2 años con `includeSubDomains` en todas las respuestas HTTPS. La cookie de sesión lleva `Secure` (sección 7). | NFR-09 · ADR 0003, 0005 | Implementado (S2-06; cookie con `Secure` en S2-10); sin `preload`: R9 |
 | A-03 | F3, E12 | S | Respuestas DNS falsificadas llevan al usuario a otro servidor. | DNSSEC activo, con el registro DS publicado en `.com`. | ADR 0005 | Implementado (S2-06) |
 | A-04 | E13 | S | Otra autoridad emite un certificado para `rolopark.com`. | Registro CAA que autoriza solo a `letsencrypt.org`. Universal SSL de Cloudflare desactivado, porque agregaba otras autoridades al CAA. | ADR 0005 | Implementado (S2-06) |
 | A-05 | E12 | S, T | Alguien toma la cuenta de Cloudflare y cambia el DNS, el CAA o el DNSSEC. | Verificación en dos pasos en la cuenta. Registros sin proxy: el TLS termina en Nginx, no en Cloudflare. | ADR 0005 | Implementado (S2-06); cuentas de un solo mantenedor: R11 |
@@ -186,28 +187,28 @@ en su issue y en su pull request.
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
 | A-09 | E2 | T, I | Un script inyectado (XSS) roba datos o actúa en nombre del usuario. | CSP `default-src 'self'; base-uri 'none'; object-src 'none'` sin excepciones: la compilación no tiene scripts ni estilos en línea, y `assetsInlineLimit: 0` evita los `data:`. React escapa el contenido. Probado con un script en línea inyectado a propósito: bloqueado. | ADR 0002 | Implementado (S2-08) |
-| A-10 | E2 | I | Un XSS lee el token de sesión. | El token va en una cookie `HttpOnly`, no en `localStorage`. | ADR 0003 | Planeado (S2-10) |
+| A-10 | E2 | I | Un XSS lee el token de sesión. | El token va en una cookie `HttpOnly`, no en `localStorage`. | ADR 0003 | Implementado (S2-10) |
 | A-11 | E2 | T | *Clickjacking*: otro sitio carga la página en un marco invisible. | `frame-ancestors 'none'` en la CSP. | — | Implementado (S2-08) |
 | A-12 | E2 | T | El navegador interpreta un archivo con otro tipo MIME (por ejemplo, como script). | `X-Content-Type-Options: nosniff` en todas las respuestas. | — | Implementado (S2-08) |
 | A-13 | E2 | I | Las URL internas se filtran a otros sitios en el encabezado `Referer`. | `Referrer-Policy: same-origin`. No se usa `no-referrer` porque los navegadores enviarían `Origin: null` y fallaría la verificación de A-14. | ADR 0003 | Implementado (S2-08) |
-| A-14 | F1, E4 | T, E | CSRF: otro sitio hace que el navegador envíe peticiones con la cookie de sesión, incluido un inicio de sesión con la cuenta del atacante. | Cookie `SameSite=Strict` y verificación exacta del encabezado `Origin` en toda petición que modifica datos; mismo origen, sin CORS. Especificación en la sección 7. | ADR 0002, 0003, 0008 | Planeado (S2-10) |
-| A-15 | F1, E4 | S | Toma de sesión con un token robado o adivinado. | Token aleatorio de 256 bits; en la base solo se guarda su hash SHA-256. Expira a los 30 minutos de inactividad y a las 12 horas; cerrar sesión o desactivar la cuenta lo revoca en el servidor. | NFR-04 · ADR 0003 | Planeado (S2-10) |
-| A-16 | E4 | S | Fijación de sesión: el atacante deja en el navegador un token que conoce. | Cada inicio de sesión genera un token nuevo; la API solo acepta tokens cuyo hash está en la tabla `sesion`. | ADR 0003 | Planeado (S2-10) |
-| A-17 | F1, E4 | S | Adivinación de contraseñas en línea o con listas de credenciales filtradas. | Mínimo 15 caracteres (S2-10). Lista de contraseñas filtradas, bloqueo tras 5 intentos fallidos y límite de peticiones (Sprint 3). | NFR-02, NFR-03, NFR-08 | Planeado (S2-10 y Sprint 3); R1 |
-| A-18 | E5 | I | Con una copia de la base, el atacante recupera las contraseñas. | Hash adaptativo con sal (argon2id); nunca texto plano. | NFR-01 | Planeado (S2-10) |
+| A-14 | F1, E4 | T, E | CSRF: otro sitio hace que el navegador envíe peticiones con la cookie de sesión, incluido un inicio de sesión con la cuenta del atacante. | Cookie `SameSite=Strict` y verificación exacta del encabezado `Origin` en toda petición que modifica datos; mismo origen, sin CORS. Especificación en la sección 7. | ADR 0002, 0003, 0008 | Implementado (S2-10), con las pruebas de la sección 7.4 |
+| A-15 | F1, E4 | S | Toma de sesión con un token robado o adivinado. | Token aleatorio de 256 bits; en la base solo se guarda su hash SHA-256. Expira a los 30 minutos de inactividad y a las 12 horas; cerrar sesión o desactivar la cuenta lo revoca en el servidor. | NFR-04 · ADR 0003 | Implementado (S2-10) |
+| A-16 | E4 | S | Fijación de sesión: el atacante deja en el navegador un token que conoce. | Cada inicio de sesión genera un token nuevo; la API solo acepta tokens cuyo hash está en la tabla `sesion`. | ADR 0003 | Implementado (S2-10) |
+| A-17 | F1, E4 | S | Adivinación de contraseñas en línea o con listas de credenciales filtradas. | Mínimo 15 caracteres (S2-10). Lista de contraseñas filtradas, bloqueo tras 5 intentos fallidos y límite de peticiones (Sprint 3). | NFR-02, NFR-03, NFR-08 | Implementado en parte (S2-10: mínimo de 15 caracteres); lo demás planeado (Sprint 3); R1 |
+| A-18 | E5 | I | Con una copia de la base, el atacante recupera las contraseñas. | Hash adaptativo con sal (argon2id); nunca texto plano. | NFR-01 | Implementado (S2-10) |
 
 ### 6.3 API y lógica de negocio (E4, F4)
 
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
 | A-19 | E4 | E | Un operador ejecuta acciones de administrador (anular, configurar tarifas). | La API verifica el rol en cada petición según la matriz de permisos; responde 403 y registra `ACCESO_DENEGADO`. | NFR-05 · requisitos 1.2 | Planeado: verificación básica (S2-11) y matriz completa (Sprint 3); R2 |
-| A-20 | E4 | T | Inyección SQL. | Prisma usa consultas parametrizadas; toda entrada se valida contra un esquema. Los permisos de `parkapp_app` limitan el daño (A-29). | NFR-06 · ADR 0006 | Planeado (S2-10 y S2-11) |
+| A-20 | E4 | T | Inyección SQL. | Prisma usa consultas parametrizadas; toda entrada se valida contra un esquema. Los permisos de `parkapp_app` limitan el daño (A-29). | NFR-06 · ADR 0006 | Implementado en `/api/sesion` (S2-10); planeado en el registro de estadías (S2-11) |
 | A-21 | E4 | T | El cliente envía horas, montos o tarifas para pagar menos. | El servidor asigna las horas; el cobro se calcula en el servidor con la tarifa y la gracia guardadas al ingreso. La API no recibe montos. | BR-11, BR-16 | Planeado (S2-11 y S2-12) |
 | A-22 | E4 | T | Valores corruptos o alterados en la tarifa, la gracia o las horas producen un cobro equivocado (una salida anterior al ingreso daba −1 minutos y una tarifa en 0 cobraba $0, sin error). | `calculateFee` valida sus entradas y lanza `RangeError`. La prueba de RI-12 revisa cada minuto de un día con cuatro tarifas (5.764 casos). 23 pruebas y 100 % de cobertura en `fee.ts`. | BR-05 a BR-08 · RI-05, RI-09, RI-10, RI-12 · NFR-20 | Implementado (S2-09); CHECK de la base: R3 |
-| A-23 | E4 | I | Los errores muestran trazas, consultas SQL o versiones. | Manejador de errores con la forma única del ADR 0008; el detalle queda solo en el registro del servidor. Un `RangeError` de `calculateFee` responde `ERROR_INTERNO`. | NFR-07 · ADR 0008 | Planeado (S2-10 a S2-12) |
-| A-24 | E4 | R | Un usuario niega haber registrado una salida o una anulación. | Bitácora con quién, qué, cuándo y desde qué IP, en la misma transacción de la acción. | NFR-12 · BR-12 · RI-17, RI-18 | Planeado (S2-10 a S2-12) |
-| A-25 | F4 | S | Un cliente falsifica su IP con `X-Forwarded-For` para evadir el límite de peticiones o alterar la bitácora. | Nginx reemplaza `X-Forwarded-For` y `X-Forwarded-Proto` en lugar de agregarles valores. La API escucha solo en la interfaz local y confía solo en ese proxy (`trust proxy` en `loopback`). | NFR-08, NFR-12 · arquitectura 6.3 | Implementado en Nginx (S2-06); `trust proxy` planeado (S2-10) |
-| A-26 | E4 | I | La bitácora guarda contraseñas o tokens. | Ningún evento guarda contraseñas ni tokens; se prueba en la historia que registra cada evento. | RI-14 | Planeado (S2-10) |
+| A-23 | E4 | I | Los errores muestran trazas, consultas SQL o versiones. | Manejador de errores con la forma única del ADR 0008; el detalle queda solo en el registro del servidor. Un `RangeError` de `calculateFee` responde `ERROR_INTERNO`. | NFR-07 · ADR 0008 | Implementado (S2-10); el `RangeError` de `calculateFee`, planeado (S2-12) |
+| A-24 | E4 | R | Un usuario niega haber registrado una salida o una anulación. | Bitácora con quién, qué, cuándo y desde qué IP, en la misma transacción de la acción. | NFR-12 · BR-12 · RI-17, RI-18 | Implementado en el inicio de sesión y los scripts de arranque (S2-10); planeado en el ingreso y la salida (S2-11 y S2-12) |
+| A-25 | F4 | S | Un cliente falsifica su IP con `X-Forwarded-For` para evadir el límite de peticiones o alterar la bitácora. | Nginx reemplaza `X-Forwarded-For` y `X-Forwarded-Proto` en lugar de agregarles valores. La API escucha solo en la interfaz local y confía solo en ese proxy (`trust proxy` en `loopback`). | NFR-08, NFR-12 · arquitectura 6.3 | Implementado en Nginx (S2-06) y en la API (S2-10) |
+| A-26 | E4 | I | La bitácora guarda contraseñas o tokens. | Ningún evento guarda contraseñas ni tokens; se prueba en la historia que registra cada evento. | RI-14 | Implementado (S2-10) en los eventos de la sesión y de los scripts de arranque; cada historia prueba los suyos |
 | A-27 | E3, E4 | D | Muchas peticiones o cuerpos grandes saturan la API. | `client_max_body_size 64k` en Nginx y AWS Shield Standard (incluido). Límite de peticiones por IP (Sprint 3). | NFR-08 | Implementado en parte (S2-06); límite de peticiones planeado (Sprint 3); R6 |
 | A-28 | E4 | D | El proceso de la API falla y el servicio queda caído. | systemd con `Restart=always`: volvió a escuchar unos 7 s después de matarlo. | NFR-17 | Implementado (S2-04) |
 
@@ -222,7 +223,7 @@ en su issue y en su pull request.
 | A-33 | E5, E6 | T, D | Pérdida o alteración de datos por una migración equivocada, un borrado o una corrupción. | AWS Backup: instantánea diaria a las 4:30 a. m. que se conserva 7 días. Respaldos de RDS con recuperación a un punto de las últimas 24 horas. Protección contra borrado. Respaldo bajo demanda antes de una migración que cambie tablas existentes. | NFR-18 · ADR 0009 | Implementado (S2-21); simulacro de restauración (Sprint 3); R4 y R5 |
 | A-34 | E6, E11 | E | El rol de AWS Backup, con la política administrada, puede modificar cualquier base de la cuenta (contraseña del maestro, protección contra borrado, retención). | Deny explícito sobre `rds:ModifyDBInstance` y `rds:ModifyDBCluster`. Verificado con el simulador de políticas (`explicitDeny`) y con un respaldo exitoso con el Deny puesto. | ADR 0009 · arquitectura 6.4 | Implementado (S2-21) |
 
-### 6.5 Secretos, servidor y cuenta de AWS (E7, E10, E11; F6, F12 y F13)
+### 6.5 Secretos, servidor y cuenta de AWS (E7, E10, E11; F6, F12, F13 y F16)
 
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
@@ -234,6 +235,8 @@ en su issue y en su pull request.
 | A-40 | E11 | R | Se niega o no se puede reconstruir una acción administrativa en AWS. | Historial de CloudTrail de 90 días; las sesiones de Session Manager quedan a nombre de la persona. | ADR 0007 | Implementado (S2-01 y S2-04) |
 | A-41 | E11 | D | Un gasto descontrolado (minería en un servidor comprometido, un error de configuración o tráfico) agota los créditos y cierra la cuenta. | AWS Budgets de 30 USD sin créditos: alerta al 80 % y dos acciones automáticas al 100 % que detienen EC2 y RDS. Probado de punta a punta con un presupuesto temporal. | NFR-23 | Implementado (S2-07); R7 |
 | A-42 | F12, E11 | E | Se abusa del rol de Budgets (*confused deputy*) para encender, borrar o modificar recursos. | Confianza solo en `budgets.amazonaws.com`, con `aws:SourceAccount` y `aws:SourceArn`. Política propia: solo detiene la instancia y la base del proyecto, solo a través de SSM (`aws:CalledVia`) y solo con los documentos de detener. Access Analyzer sin hallazgos; en el simulador, iniciar, terminar, borrar y modificar dan `implicitDeny`. | NFR-23 · arquitectura 6.4 | Implementado (S2-07) |
+| A-51 | F16, E10 | I | La contraseña del primer administrador queda en el historial de la terminal, en la lista de procesos o en la salida del script. | El script la recibe por la entrada estándar, nunca como argumento: se lee con `read -s` y se envía con `printf`, que es un comando interno de bash. El historial guarda solo el nombre de la variable. El script se niega a leerla de una terminal y no la imprime. | NFR-10 · RI-14 | Implementado (S2-10) |
+| A-52 | F16, E5 | T, R, E | Los scripts de arranque sobrescriben la contraseña de una cuenta existente, cargan una tarifa ilegal o cambian la configuración sin dejar rastro. | Corren solo por Session Manager (IAM con MFA; la sesión queda a nombre de la persona en CloudTrail) y con `parkapp_app`, no con el maestro. Nunca modifican una cuenta existente. La tarifa no puede superar el tope legal vigente y solo se carga a nombre de una cuenta de administrador activa. Cada cambio crea una versión nueva y queda en la bitácora como evento del sistema, sin usuario ni IP. | NFR-12 · BR-10, BR-11, BR-15 · RI-18 · ADR 0006 | Implementado (S2-10) |
 
 ### 6.6 Despliegue (E8, E9, E10; F7 a F9 y F15)
 
@@ -395,3 +398,4 @@ atacante (*login CSRF*).
 | Versión | Fecha | Cambios |
 |---|---|---|
 | 1.0 | 4 de noviembre de 2026 | Versión inicial: elementos, flujos, límites de confianza y diagrama; tabla STRIDE con los controles del Sprint 2; especificación de la protección contra CSRF para S2-10; riesgos residuales, con las advertencias de Prisma aceptadas en #5 marcadas como resueltas. Hallazgo: la cuenta de GitHub no tenía verificación en dos pasos; se activó el mismo día (A-50). (#8) |
+| 1.1 | 7 de noviembre de 2026 | Cierre de S2-10: A-02 (cookie), A-10, A-14 a A-16, A-18, A-25 y A-26 pasan a Implementado; A-17, A-20, A-23 y A-24, en parte. Flujo F16 (scripts de arranque por Session Manager) y amenazas A-51 y A-52. (#40) |
