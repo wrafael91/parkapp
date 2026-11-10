@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { PrismaClient, VehicleType } from "../../generated/prisma/client.js";
+import type { PrismaClient, Stay, VehicleType } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
 import { readSessionToken } from "../accounts/session-cookie.js";
 import { authenticate } from "../accounts/session.service.js";
@@ -24,6 +24,22 @@ const entryBody = z.object({
   color: z.string().trim().min(1).max(30),
   marca: z.string().trim().max(40).nullish(),
 });
+
+// Only the vehicles inside for now (FR-10). Any other value, or none, is a 400,
+// so a later list of closed stays does not change what a request means.
+const listQuery = z.object({ estado: z.literal("ACTIVA") });
+
+// ADR 0008: a stay in Spanish, as the entry and the list answer it.
+function toEstadia(stay: Stay) {
+  return {
+    id: stay.id,
+    placa: stay.plate,
+    tipoVehiculo: VEHICLE_TYPE_NAMES[stay.vehicleType],
+    color: stay.color,
+    marca: stay.brand,
+    horaIngreso: stay.entryTime.toISOString(),
+  };
+}
 
 // The Origin check runs before these routes (app.ts). Each request runs in one
 // transaction, decided here, and the response goes out after it commits.
@@ -70,17 +86,36 @@ export function createStaysRouter(prisma: PrismaClient): Router {
           "La placa ya tiene una estadía activa: posible placa clonada.",
         );
         return;
-      case "registered": {
-        const { stay } = outcome;
-        res.status(201).json({
-          id: stay.id,
-          placa: stay.plate,
-          tipoVehiculo: VEHICLE_TYPE_NAMES[stay.vehicleType],
-          color: stay.color,
-          marca: stay.brand,
-          horaIngreso: stay.entryTime.toISOString(),
-        });
-      }
+      case "registered":
+        res.status(201).json(toEstadia(outcome.stay));
+    }
+  });
+
+  // FR-10: the vehicles inside, newest first. The search comes in Sprint 3.
+  router.get("/", async (req, res) => {
+    const token = readSessionToken(req.get("Cookie"));
+    const query = listQuery.safeParse(req.query);
+    const now = new Date();
+    const outcome = await prisma.$transaction(async (db) => {
+      const user = token === null ? null : await authenticate(db, { token, now });
+      if (user === null) return { kind: "unauthenticated" } as const;
+      if (!query.success) return { kind: "invalid" } as const;
+      const stays = await db.stay.findMany({
+        where: { status: "ACTIVE" },
+        orderBy: [{ entryTime: "desc" }, { id: "desc" }],
+      });
+      return { kind: "listed", stays } as const;
+    });
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+        return;
+      case "invalid":
+        sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
+        return;
+      case "listed":
+        res.status(200).json({ estadias: outcome.stays.map(toEstadia) });
     }
   });
 
