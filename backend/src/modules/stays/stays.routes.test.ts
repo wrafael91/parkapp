@@ -230,3 +230,29 @@ describe("POST /api/estadias validation (NFR-06, FR-08)", () => {
     });
   });
 });
+
+describe("POST /api/estadias with a plate that is already inside (BR-03, FR-09)", () => {
+  it("answers 409 PLACA_ACTIVA and keeps the audit event", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const first = await postEntry(app, CAR, cookie);
+
+      const response = await postEntry(app, { ...CAR, color: "Azul" }, cookie);
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: {
+          codigo: "PLACA_ACTIVA",
+          mensaje: "La placa ya tiene una estadía activa: posible placa clonada.",
+        },
+      });
+      expect(await db.stay.count({ where: { plate: "TST123" } })).toBe(1);
+      // The rejection is committed, not rolled back: the event stays in the log.
+      const event = await db.auditEvent.findFirstOrThrow({
+        where: { action: "ENTRY_REJECTED_ACTIVE_PLATE", userId: user.id },
+      });
+      expect(event).toMatchObject({ entityId: first.body.id, ip: IP });
+      expect(event.detail).toEqual({ tipo_vehiculo: "CARRO", color: "Azul", marca: "Mazda" });
+    });
+  });
+});
