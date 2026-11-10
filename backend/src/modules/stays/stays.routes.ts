@@ -59,8 +59,16 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         return;
       case "invalid":
       case "invalidPlate":
-      case "plateActive":
         sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
+        return;
+      // BR-03 and FR-09: the rejection was committed with its audit event.
+      case "plateActive":
+        sendError(
+          res,
+          409,
+          "PLACA_ACTIVA",
+          "La placa ya tiene una estadía activa: posible placa clonada.",
+        );
         return;
       case "registered": {
         const { stay } = outcome;
