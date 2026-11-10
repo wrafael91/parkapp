@@ -7,6 +7,7 @@ import { createPrismaClient } from "../../db.js";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { hashSessionToken } from "../accounts/session-token.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
+import { registerEntry } from "./entry.service.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -253,6 +254,141 @@ describe("POST /api/estadias with a plate that is already inside (BR-03, FR-09)"
       });
       expect(event).toMatchObject({ entityId: first.body.id, ip: IP });
       expect(event.detail).toEqual({ tipo_vehiculo: "CARRO", color: "Azul", marca: "Mazda" });
+    });
+  });
+});
+
+// Browsers may leave out Origin in a same-origin GET, and the check only covers
+// the methods that change data (docs/modelo-amenazas.md, 7.4).
+function getStays(app: Express, query: string, cookie?: string) {
+  const req = request(app).get(`/api/estadias${query}`).set("X-Forwarded-For", IP);
+  return cookie === undefined ? req : req.set("Cookie", cookie);
+}
+
+// Registers an entry at a given minute from now, without going through the route.
+async function entryAt(
+  db: Prisma.TransactionClient,
+  input: { plate: string; vehicleType: "CAR" | "MOTORCYCLE"; brand?: string; userId: number },
+  at: Date,
+) {
+  const result = await registerEntry(db, { ...input, color: "Gris", ip: IP, now: at });
+  if (!result.ok) throw new Error("setup failed");
+  return result.stayId;
+}
+
+describe("GET /api/estadias?estado=ACTIVA (FR-10, US-07)", () => {
+  it("lists the vehicles inside of every user, newest first, as the 201 does", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const admin = await db.user.create({
+        data: {
+          name: "Administrador de rutas",
+          email: "admin.rutas@example.com",
+          passwordHash: "not-a-real-hash",
+          role: "ADMINISTRATOR",
+        },
+      });
+      const start = Date.now();
+      const at = (minutes: number) => new Date(start + minutes * 60_000);
+      const first = await entryAt(
+        db,
+        { plate: "TST101", vehicleType: "CAR", brand: "Mazda", userId: user.id },
+        at(1),
+      );
+      const third = await entryAt(
+        db,
+        { plate: "TST10A", vehicleType: "MOTORCYCLE", userId: admin.id },
+        at(3),
+      );
+      const second = await entryAt(
+        db,
+        { plate: "TST102", vehicleType: "CAR", brand: "Kia", userId: user.id },
+        at(2),
+      );
+      const closed = await entryAt(
+        db,
+        { plate: "TST103", vehicleType: "CAR", userId: user.id },
+        at(4),
+      );
+      await db.stay.update({
+        where: { id: closed },
+        data: { status: "CLOSED", exitTime: at(5), exitById: user.id },
+      });
+      const voided = await entryAt(
+        db,
+        { plate: "TST104", vehicleType: "CAR", userId: user.id },
+        at(5),
+      );
+      await db.stay.update({
+        where: { id: voided },
+        data: { status: "VOIDED", voidedAt: at(6), voidedById: admin.id, voidReason: "Prueba" },
+      });
+
+      const response = await getStays(app, "?estado=ACTIVA", cookie);
+
+      expect(response.status).toBe(200);
+      // A development database may have other stays inside: only these are checked.
+      const ids = [first, second, third, closed, voided];
+      const ours = response.body.estadias.filter((stay: { id: number }) => ids.includes(stay.id));
+      expect(ours).toEqual([
+        {
+          id: third,
+          placa: "TST10A",
+          tipoVehiculo: "MOTO",
+          color: "Gris",
+          marca: null,
+          horaIngreso: at(3).toISOString(),
+        },
+        {
+          id: second,
+          placa: "TST102",
+          tipoVehiculo: "CARRO",
+          color: "Gris",
+          marca: "Kia",
+          horaIngreso: at(2).toISOString(),
+        },
+        {
+          id: first,
+          placa: "TST101",
+          tipoVehiculo: "CARRO",
+          color: "Gris",
+          marca: "Mazda",
+          horaIngreso: at(1).toISOString(),
+        },
+      ]);
+    });
+  });
+
+  it("puts the newest stay first when two entered at the same instant", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const at = new Date(Date.now() + 60_000);
+      const older = await entryAt(db, { plate: "TST111", vehicleType: "CAR", userId: user.id }, at);
+      const newer = await entryAt(db, { plate: "TST112", vehicleType: "CAR", userId: user.id }, at);
+
+      const response = await getStays(app, "?estado=ACTIVA", cookie);
+
+      const ids = response.body.estadias
+        .map((stay: { id: number }) => stay.id)
+        .filter((id: number) => id === older || id === newer);
+      expect(ids).toEqual([newer, older]);
+    });
+  });
+
+  it.each([
+    ["no cookie", undefined],
+    ["an unknown token", "sesion=token-inventado"],
+  ])("answers a list request with %s with 401 NO_AUTENTICADO", async (_case, cookie) => {
+    await withApp(async (app, db) => {
+      const { user } = await signedInOperator(db);
+      await entryAt(db, { plate: "TST121", vehicleType: "CAR", userId: user.id }, new Date());
+
+      const response = await getStays(app, "?estado=ACTIVA", cookie);
+
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({
+        error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." },
+      });
     });
   });
 });
