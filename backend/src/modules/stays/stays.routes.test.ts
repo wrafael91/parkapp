@@ -392,3 +392,31 @@ describe("GET /api/estadias?estado=ACTIVA (FR-10, US-07)", () => {
     });
   });
 });
+
+describe("GET /api/estadias query validation (NFR-06)", () => {
+  it.each([
+    ["no estado", ""],
+    ["estado=CERRADA", "?estado=CERRADA"],
+    ["the state in lowercase", "?estado=activa"],
+    ["the internal state", "?estado=ACTIVE"],
+    ["estado twice", "?estado=ACTIVA&estado=ACTIVA"],
+  ])("rejects a list request with %s with 400 ENTRADA_INVALIDA", async (_case, query) => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedInOperator(db);
+
+      const response = await getStays(app, query, cookie);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.codigo).toBe("ENTRADA_INVALIDA");
+    });
+  });
+
+  it("answers 401 before validating the query of a request without a session", async () => {
+    await withApp(async (app) => {
+      const response = await getStays(app, "");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
+    });
+  });
+});
