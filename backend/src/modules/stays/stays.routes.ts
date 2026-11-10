@@ -25,6 +25,10 @@ const entryBody = z.object({
   marca: z.string().trim().max(40).nullish(),
 });
 
+// Only the vehicles inside for now (FR-10). Any other value, or none, is a 400,
+// so a later list of closed stays does not change what a request means.
+const listQuery = z.object({ estado: z.literal("ACTIVA") });
+
 // ADR 0008: a stay in Spanish, as the entry and the list answer it.
 function toEstadia(stay: Stay) {
   return {
@@ -90,20 +94,29 @@ export function createStaysRouter(prisma: PrismaClient): Router {
   // FR-10: the vehicles inside, newest first. The search comes in Sprint 3.
   router.get("/", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
+    const query = listQuery.safeParse(req.query);
     const now = new Date();
-    const stays = await prisma.$transaction(async (db) => {
+    const outcome = await prisma.$transaction(async (db) => {
       const user = token === null ? null : await authenticate(db, { token, now });
-      if (user === null) return null;
-      return db.stay.findMany({
+      if (user === null) return { kind: "unauthenticated" } as const;
+      if (!query.success) return { kind: "invalid" } as const;
+      const stays = await db.stay.findMany({
         where: { status: "ACTIVE" },
         orderBy: [{ entryTime: "desc" }, { id: "desc" }],
       });
+      return { kind: "listed", stays } as const;
     });
-    if (stays === null) {
-      sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
-      return;
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+        return;
+      case "invalid":
+        sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
+        return;
+      case "listed":
+        res.status(200).json({ estadias: outcome.stays.map(toEstadia) });
     }
-    res.status(200).json({ estadias: stays.map(toEstadia) });
   });
 
   return router;
