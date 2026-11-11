@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import Stays from "./Stays.tsx";
 import { jsonResponse, stubFetch } from "./test-helpers.ts";
@@ -72,5 +73,80 @@ describe("vehicles inside", () => {
     renderStays();
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("No se pudo cargar la lista de vehículos.");
+  });
+});
+
+// Fills in the entry form and submits it, as a person would.
+async function registerEntry(
+  user: UserEvent,
+  entry: { placa: string; tipo: string; color: string; marca: string },
+) {
+  await user.type(await screen.findByLabelText("Placa"), entry.placa);
+  await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), entry.tipo);
+  await user.type(screen.getByLabelText("Color"), entry.color);
+  if (entry.marca !== "") await user.type(screen.getByLabelText("Marca (opcional)"), entry.marca);
+  await user.click(screen.getByRole("button", { name: "Registrar ingreso" }));
+}
+
+const MOTORCYCLE_ENTRY = { placa: "abc-12d", tipo: "Moto", color: "Negro", marca: "" };
+
+function valueOf(label: string) {
+  return (screen.getByLabelText(label) as HTMLInputElement | HTMLSelectElement).value;
+}
+
+describe("entry", () => {
+  it.each([
+    ["no brand as null", "", null],
+    ["the brand", "Yamaha", "Yamaha"],
+  ])("sends the plate as typed and %s", async (_case, marca, expected) => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(201, { ...MOTORCYCLE, marca: expected }),
+    );
+    const user = userEvent.setup();
+    renderStays();
+    await registerEntry(user, { ...MOTORCYCLE_ENTRY, marca });
+    await screen.findByText("ABC12D");
+    // The server normalizes the plate and sets the time (FR-08, BR-16).
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/estadias", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        placa: "abc-12d",
+        tipoVehiculo: "MOTO",
+        color: "Negro",
+        marca: expected,
+      }),
+    });
+  });
+
+  it("shows the new vehicle first and clears the form", async () => {
+    stubFetch(jsonResponse(200, { estadias: [CAR] }), jsonResponse(201, MOTORCYCLE));
+    const user = userEvent.setup();
+    renderStays();
+    await screen.findByText("ABC123");
+    await registerEntry(user, MOTORCYCLE_ENTRY);
+    await screen.findByText("ABC12D");
+    expect(rows().map((cells) => cells[0])).toEqual(["ABC12D", "ABC123"]);
+    expect(valueOf("Placa")).toBe("");
+    expect(valueOf("Tipo de vehículo")).toBe("CARRO");
+    expect(valueOf("Color")).toBe("");
+    expect(valueOf("Marca (opcional)")).toBe("");
+  });
+
+  // R3 in docs/modelo-amenazas.md: nothing stops two entries of the same plate
+  // at the same time until the partial unique index of #6.
+  it("disables the button until the API answers", async () => {
+    const fetchMock = stubFetch(jsonResponse(200, NO_STAYS));
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const user = userEvent.setup();
+    renderStays();
+    await registerEntry(user, MOTORCYCLE_ENTRY);
+    const button = screen.getByRole("button", { name: "Registrar ingreso" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    answer(jsonResponse(201, MOTORCYCLE));
+    await screen.findByText("ABC12D");
+    expect(button.disabled).toBe(false);
   });
 });
