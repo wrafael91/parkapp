@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 
-// GET /api/estadias (ADR 0008), with a relative URL and the default
+// GET and POST /api/estadias (ADR 0008), with a relative URL and the default
 // fetch, as in App.tsx: the browser sends the session cookie by itself, without
 // credentials: "include" (docs/modelo-amenazas.md, 7.3).
 const STAYS_URL = "/api/estadias";
@@ -38,8 +38,8 @@ function formatEntryTime(iso: string): string {
 
 type List = { status: "loading" } | { status: "failed" } | { status: "loaded"; stays: Estadia[] };
 
-// The screen after signing in: the vehicles inside (US-07). A 401 means the
-// session ended, so the page goes back to sign in.
+// The screen after signing in: the entry form and the vehicles inside (US-06,
+// US-07). A 401 means the session ended, so the page goes back to sign in.
 export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [list, setList] = useState<List>({ status: "loading" });
 
@@ -65,8 +65,17 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
     // so the first one is enough, and the list is not asked for again.
   }, []);
 
+  // The new stay is the newest, so it goes first, as the API would list it.
+  function addStay(stay: Estadia) {
+    setList((current) =>
+      current.status === "loaded" ? { status: "loaded", stays: [stay, ...current.stays] } : current,
+    );
+  }
+
   return (
     <>
+      <h2>Registrar ingreso</h2>
+      <EntryForm onRegistered={addStay} />
       <h2>Vehículos dentro</h2>
       {list.status === "loading" && <p>Cargando…</p>}
       {list.status === "failed" && <p role="alert">No se pudo cargar la lista de vehículos.</p>}
@@ -98,5 +107,70 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
         </table>
       )}
     </>
+  );
+}
+
+function EntryForm({ onRegistered }: { onRegistered: (stay: Estadia) => void }) {
+  const [sending, setSending] = useState(false);
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const marca = String(form.get("marca") ?? "");
+    // The server normalizes the plate and sets the entry time (FR-08, BR-16).
+    // The button stays disabled until the answer arrives, so a double click
+    // does not send two entries (R3 in docs/modelo-amenazas.md).
+    setSending(true);
+    // null when the server cannot be reached.
+    const response = await fetch(STAYS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        placa: form.get("placa"),
+        tipoVehiculo: form.get("tipoVehiculo"),
+        color: form.get("color"),
+        marca: marca.trim() === "" ? null : marca,
+      }),
+    }).catch(() => null);
+    setSending(false);
+    if (response?.ok) {
+      const stay: Estadia = await response.json();
+      formElement.reset();
+      onRegistered(stay);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>
+        Placa
+        <input
+          name="placa"
+          required
+          maxLength={20}
+          autoComplete="off"
+          autoCapitalize="characters"
+        />
+      </label>
+      <label>
+        Tipo de vehículo
+        <select name="tipoVehiculo">
+          <option value="CARRO">Carro</option>
+          <option value="MOTO">Moto</option>
+        </select>
+      </label>
+      <label>
+        Color
+        <input name="color" required maxLength={30} autoComplete="off" />
+      </label>
+      <label>
+        Marca (opcional)
+        <input name="marca" maxLength={40} autoComplete="off" />
+      </label>
+      <button type="submit" disabled={sending}>
+        Registrar ingreso
+      </button>
+    </form>
   );
 }
