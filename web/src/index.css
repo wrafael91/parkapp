@@ -8,7 +8,8 @@ label {
   margin-bottom: 1rem;
 }
 
-input {
+input,
+select {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -18,6 +19,22 @@ input {
 
 /* 16 px text, so phones do not zoom in when a field gets focus. */
 input,
+select,
 button {
   font: inherit;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.25rem 1rem 0.25rem 0;
+  text-align: left;
+}
+
+/* The entry time on one line on phones. */
+time {
+  white-space: nowrap;
 }

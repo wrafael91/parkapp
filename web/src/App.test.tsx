@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import App from "./App.tsx";
+import { jsonResponse, stubFetch } from "./test-helpers.ts";
 
 // The API's answers (ADR 0008). findBy* and getBy* fail when the element is
 // missing, so they are assertions too.
@@ -15,25 +16,8 @@ const WRONG_CREDENTIALS = {
 const INTERNAL_ERROR = {
   error: { codigo: "ERROR_INTERNO", mensaje: "Ocurrió un error inesperado." },
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-// Replaces fetch with one answer per call, in order. An Error is a network
-// failure (fetch rejects).
-function stubFetch(...answers: (Response | Error)[]) {
-  const fetchMock = vi.fn<typeof fetch>();
-  for (const answer of answers) {
-    if (answer instanceof Error) fetchMock.mockRejectedValueOnce(answer);
-    else fetchMock.mockResolvedValueOnce(answer);
-  }
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
+// Once signed in, the page asks for the vehicles inside (Stays.tsx).
+const NO_STAYS = { estadias: [] };
 
 describe("on load", () => {
   it("shows the sign-in form when there is no active session", async () => {
@@ -50,7 +34,7 @@ describe("on load", () => {
   });
 
   it("shows the user and the sign-out button when a session is active", async () => {
-    stubFetch(jsonResponse(200, ACTIVE_SESSION));
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS));
     render(<App />);
     await screen.findByText("Sesión iniciada: Ana Pérez");
     screen.getByRole("button", { name: "Cerrar sesión" });
@@ -76,13 +60,17 @@ async function signIn(user: UserEvent) {
 
 describe("sign in", () => {
   it("sends the email and password and shows the user", async () => {
-    const fetchMock = stubFetch(jsonResponse(401, NO_SESSION), jsonResponse(200, ACTIVE_SESSION));
+    const fetchMock = stubFetch(
+      jsonResponse(401, NO_SESSION),
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+    );
     const user = userEvent.setup();
     render(<App />);
     await signIn(user);
     await screen.findByText("Sesión iniciada: Ana Pérez");
     // POST /api/sesion in JSON, with a relative URL and the default fetch.
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/sesion", {
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/sesion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ correo: "ana@rolopark.com", contrasena: "una contraseña de prueba" }),
@@ -115,7 +103,11 @@ describe("sign in", () => {
 describe("sign out", () => {
   it("ends the session and shows the sign-in form again", async () => {
     const signedOut = new Response(null, { status: 204 });
-    const fetchMock = stubFetch(jsonResponse(200, ACTIVE_SESSION), signedOut);
+    const fetchMock = stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      signedOut,
+    );
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
@@ -128,12 +120,53 @@ describe("sign out", () => {
     ["fails", jsonResponse(500, INTERNAL_ERROR)],
     ["cannot be reached", new TypeError("Failed to fetch")],
   ])("keeps the session and says so when the server %s", async (_case, answer) => {
-    stubFetch(jsonResponse(200, ACTIVE_SESSION), answer);
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS), answer);
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("No se pudo cerrar la sesión. Intenta de nuevo.");
     screen.getByText("Sesión iniciada: Ana Pérez");
+  });
+});
+
+describe("stays screen", () => {
+  it("shows the vehicles inside once signed in", async () => {
+    const inside = {
+      estadias: [
+        {
+          id: 7,
+          placa: "ABC123",
+          tipoVehiculo: "CARRO",
+          color: "Rojo",
+          marca: "Mazda",
+          horaIngreso: "2026-11-11T02:22:00.000Z",
+        },
+      ],
+    };
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, inside));
+    render(<App />);
+    await screen.findByText("ABC123");
+  });
+
+  // The session expires after 30 minutes without use (US-01).
+  it("goes back to the sign-in form when the session ended before the list", async () => {
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(401, NO_SESSION));
+    render(<App />);
+    await screen.findByRole("button", { name: "Iniciar sesión" });
+  });
+
+  it("goes back to the sign-in form when the session ended before an entry", async () => {
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(401, NO_SESSION),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText("Placa"), "ABC123");
+    await user.type(screen.getByLabelText("Color"), "Rojo");
+    await user.click(screen.getByRole("button", { name: "Registrar ingreso" }));
+    await screen.findByRole("button", { name: "Iniciar sesión" });
   });
 });
