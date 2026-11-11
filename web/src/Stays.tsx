@@ -75,7 +75,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   return (
     <>
       <h2>Registrar ingreso</h2>
-      <EntryForm onRegistered={addStay} />
+      <EntryForm onRegistered={addStay} onSessionEnded={onSessionEnded} />
       <h2>Vehículos dentro</h2>
       {list.status === "loading" && <p>Cargando…</p>}
       {list.status === "failed" && <p role="alert">No se pudo cargar la lista de vehículos.</p>}
@@ -110,7 +110,27 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   );
 }
 
-function EntryForm({ onRegistered }: { onRegistered: (stay: Estadia) => void }) {
+// The page reads the API's error code (ADR 0008, decision 6).
+function entryError(codigo: string | undefined): string {
+  switch (codigo) {
+    // BR-03 and FR-09: the alert of a possible cloned plate.
+    case "PLACA_ACTIVA":
+      return "La placa ya tiene una estadía activa: posible placa clonada.";
+    case "ENTRADA_INVALIDA":
+      return "Revisa los datos: la placa de carro es como ABC123 y la de moto como ABC12D.";
+    default:
+      return "No se pudo registrar el ingreso. Intenta de nuevo.";
+  }
+}
+
+function EntryForm({
+  onRegistered,
+  onSessionEnded,
+}: {
+  onRegistered: (stay: Estadia) => void;
+  onSessionEnded: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -137,8 +157,19 @@ function EntryForm({ onRegistered }: { onRegistered: (stay: Estadia) => void }) 
     if (response?.ok) {
       const stay: Estadia = await response.json();
       formElement.reset();
+      setError(null);
       onRegistered(stay);
+      return;
     }
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    // What was typed stays in the form, so it can be fixed and sent again.
+    const body: { error?: { codigo?: string } } | null = response
+      ? await response.json().catch(() => null)
+      : null;
+    setError(entryError(body?.error?.codigo));
   }
 
   return (
@@ -171,6 +202,7 @@ function EntryForm({ onRegistered }: { onRegistered: (stay: Estadia) => void }) 
       <button type="submit" disabled={sending}>
         Registrar ingreso
       </button>
+      {error && <p role="alert">{error}</p>}
     </form>
   );
 }
