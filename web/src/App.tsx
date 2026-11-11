@@ -1,4 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from "react";
+import Stays from "./Stays.tsx";
 
 // GET, POST and DELETE /api/sesion (ADR 0008), with a relative URL and the
 // default fetch: the page and the API share the origin, so the browser sends
@@ -111,6 +112,7 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
         Cerrar sesión
       </button>
       {error && <p role="alert">{error}</p>}
+      <Stays onSessionEnded={onSignedOut} />
     </>
   );
 }
