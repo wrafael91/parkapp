@@ -150,3 +150,45 @@ describe("entry", () => {
     expect(button.disabled).toBe(false);
   });
 });
+
+describe("rejected entry", () => {
+  it.each([
+    [
+      "the plate is already inside",
+      409,
+      "PLACA_ACTIVA",
+      "La placa ya tiene una estadía activa: posible placa clonada.",
+    ],
+    [
+      "the data is not valid",
+      400,
+      "ENTRADA_INVALIDA",
+      "Revisa los datos: la placa de carro es como ABC123 y la de moto como ABC12D.",
+    ],
+  ])("shows an alert and keeps the form when %s", async (_case, status, codigo, message) => {
+    const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+    stubFetch(jsonResponse(200, { estadias: [CAR] }), jsonResponse(status, rejected));
+    const user = userEvent.setup();
+    renderStays();
+    await registerEntry(user, MOTORCYCLE_ENTRY);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+    expect(valueOf("Placa")).toBe("abc-12d");
+    expect(valueOf("Tipo de vehículo")).toBe("MOTO");
+    expect(valueOf("Color")).toBe("Negro");
+    expect(rows().map((cells) => cells[0])).toEqual(["ABC123"]);
+  });
+
+  it.each([
+    ["fails", jsonResponse(500, INTERNAL_ERROR)],
+    ["cannot be reached", new TypeError("Failed to fetch")],
+  ])("shows a general error when the server %s", async (_case, answer) => {
+    stubFetch(jsonResponse(200, NO_STAYS), answer);
+    const user = userEvent.setup();
+    renderStays();
+    await registerEntry(user, MOTORCYCLE_ENTRY);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo registrar el ingreso. Intenta de nuevo.");
+    expect(valueOf("Placa")).toBe("abc-12d");
+  });
+});

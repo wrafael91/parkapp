@@ -155,4 +155,18 @@ describe("stays screen", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Iniciar sesión" });
   });
+
+  it("goes back to the sign-in form when the session ended before an entry", async () => {
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(401, NO_SESSION),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText("Placa"), "ABC123");
+    await user.type(screen.getByLabelText("Color"), "Rojo");
+    await user.click(screen.getByRole("button", { name: "Registrar ingreso" }));
+    await screen.findByRole("button", { name: "Iniciar sesión" });
+  });
 });
