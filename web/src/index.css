@@ -38,3 +38,36 @@ td {
 time {
   white-space: nowrap;
 }
+
+/* The entry data of an exit and the receipt: each term next to its value. */
+dl {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: 0.25rem 1rem;
+}
+
+dd {
+  margin: 0;
+}
+
+/* The buttons of the exit, side by side. */
+section button {
+  margin-right: 0.5rem;
+}
+
+/* FR-14: printed, the receipt goes alone on the page, without its buttons.
+   Only when there is a receipt, so printing the list does not give a blank page. */
+@media print {
+  body {
+    margin: 0;
+  }
+
+  main:has(.receipt) > :not(.receipt),
+  .receipt button {
+    display: none;
+  }
+}
+
+@page {
+  margin: 1.5cm;
+}
