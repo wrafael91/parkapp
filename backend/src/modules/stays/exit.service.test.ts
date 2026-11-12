@@ -179,3 +179,100 @@ describe("registerExit (FR-12, FR-13, FR-14, RI-11)", () => {
     });
   });
 });
+
+describe("registerExit of a stay that is not active (RI-04, RI-11)", () => {
+  it("answers notFound for a stay that does not exist and writes nothing", async () => {
+    await asApp(async (db) => {
+      const userId = await setUp(db);
+      const last = await db.stay.aggregate({ _max: { id: true } });
+      const receiptsBefore = await db.receipt.count();
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await registerExit(db, {
+        stayId: (last._max.id ?? 0) + 1,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 6),
+      });
+
+      expect(result).toEqual({ ok: false, reason: "notFound" });
+      expect(await db.receipt.count()).toBe(receiptsBefore);
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+
+  it("answers notActive for a stay that already left and keeps its first exit", async () => {
+    await asApp(async (db) => {
+      const userId = await setUp(db);
+      const stayId = await enter(db, userId, "SAL123", "CAR");
+      const firstExit = minutesAfter(ENTRY, 6);
+      await registerExit(db, { stayId, userId, ip: IP, now: firstExit });
+      const receiptsBefore = await db.receipt.count();
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await registerExit(db, {
+        stayId,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 9),
+      });
+
+      expect(result).toEqual({ ok: false, reason: "notActive" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay).toMatchObject({ status: "CLOSED", exitTime: firstExit });
+      expect(await db.receipt.count()).toBe(receiptsBefore);
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+
+  it("answers notActive for a voided stay and leaves it voided", async () => {
+    await asApp(async (db) => {
+      const userId = await setUp(db);
+      const stayId = await enter(db, userId, "SAL123", "CAR");
+      await db.stay.update({
+        where: { id: stayId },
+        data: {
+          status: "VOIDED",
+          voidedAt: minutesAfter(ENTRY, 2),
+          voidedById: userId,
+          voidReason: "Ingreso de prueba",
+        },
+      });
+      const receiptsBefore = await db.receipt.count();
+
+      const result = await registerExit(db, {
+        stayId,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 6),
+      });
+
+      expect(result).toEqual({ ok: false, reason: "notActive" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay).toMatchObject({ status: "VOIDED", exitTime: null, exitById: null });
+      expect(await db.receipt.count()).toBe(receiptsBefore);
+    });
+  });
+
+  // Passes since the green of cycle K, on purpose: it fixes that the fee is
+  // calculated before anything is written (A-23).
+  it("leaves the stay active and issues no receipt when calculateFee throws", async () => {
+    await asApp(async (db) => {
+      const userId = await setUp(db);
+      const stayId = await enter(db, userId, "SAL123", "CAR");
+      const receiptsBefore = await db.receipt.count();
+
+      await expect(
+        registerExit(db, { stayId, userId, ip: IP, now: minutesAfter(ENTRY, -1) }),
+      ).rejects.toThrow(RangeError);
+
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay).toMatchObject({ status: "ACTIVE", exitTime: null, exitById: null });
+      expect(await db.receipt.count()).toBe(receiptsBefore);
+      const events = await db.auditEvent.count({
+        where: { action: "EXIT_REGISTERED", entity: "estadia", entityId: stayId },
+      });
+      expect(events).toBe(0);
+    });
+  });
+});
