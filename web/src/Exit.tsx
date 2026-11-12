@@ -48,18 +48,36 @@ function formatPesos(value: number): string {
   return `$${groupDigits(value)}`;
 }
 
+// The page reads the API's error code (ADR 0008, decision 6). Both mean the
+// stay is not inside anymore, so it leaves the list.
+function goneMessage(codigo: string | undefined): string | null {
+  switch (codigo) {
+    case "ESTADIA_NO_ACTIVA":
+      return "La estadía ya no está activa: puede que ya se haya registrado su salida.";
+    case "NO_ENCONTRADO":
+      return "La estadía no existe.";
+    default:
+      return null;
+  }
+}
+
 // The exit of one stay (US-08, US-09): first the entry data, to check that it
 // matches the vehicle that leaves (BR-04), and then the receipt (BR-14).
 export default function Exit({
   stay,
   onExited,
+  onGone,
   onClose,
+  onSessionEnded,
 }: {
   stay: Estadia;
   onExited: () => void;
+  onGone: (message: string) => void;
   onClose: () => void;
+  onSessionEnded: () => void;
 }) {
   const [receipt, setReceipt] = useState<Comprobante | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   async function confirmExit() {
@@ -75,7 +93,23 @@ export default function Exit({
     if (response?.ok) {
       setReceipt(await response.json());
       onExited();
+      return;
     }
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    const body: { error?: { codigo?: string } } | null = response
+      ? await response.json().catch(() => null)
+      : null;
+    const gone = goneMessage(body?.error?.codigo);
+    if (gone) {
+      onGone(gone);
+      return;
+    }
+    // The stay is still inside, so the exit can be tried again. If the first
+    // one did go through, the second answers 409.
+    setError("No se pudo registrar la salida. Intenta de nuevo.");
   }
 
   if (receipt) return <Receipt receipt={receipt} onClose={onClose} />;
@@ -104,6 +138,7 @@ export default function Exit({
       <button type="button" disabled={sending} onClick={onClose}>
         Cancelar
       </button>
+      {error && <p role="alert">{error}</p>}
     </section>
   );
 }

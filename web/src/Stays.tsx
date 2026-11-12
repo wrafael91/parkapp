@@ -17,6 +17,8 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   // The stay whose exit is being registered. While there is one, the exit takes
   // the place of the form and the list.
   const [leaving, setLeaving] = useState<Estadia | null>(null);
+  // Why the last exit could not be registered, when the stay was gone.
+  const [exitError, setExitError] = useState<string | null>(null);
 
   useEffect(() => {
     // Loads once, when the screen appears. The API sends the newest first.
@@ -47,7 +49,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
     );
   }
 
-  // The stay left, so it leaves the list.
+  // The stay left, or it was no longer active, so it leaves the list.
   function removeStay(id: number) {
     setList((current) =>
       current.status === "loaded"
@@ -61,7 +63,13 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
       <Exit
         stay={leaving}
         onExited={() => removeStay(leaving.id)}
+        onGone={(message) => {
+          removeStay(leaving.id);
+          setExitError(message);
+          setLeaving(null);
+        }}
         onClose={() => setLeaving(null)}
+        onSessionEnded={onSessionEnded}
       />
     );
   }
@@ -71,6 +79,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
       <h2>Registrar ingreso</h2>
       <EntryForm onRegistered={addStay} onSessionEnded={onSessionEnded} />
       <h2>Vehículos dentro</h2>
+      {exitError && <p role="alert">{exitError}</p>}
       {list.status === "loading" && <p>Cargando…</p>}
       {list.status === "failed" && <p role="alert">No se pudo cargar la lista de vehículos.</p>}
       {list.status === "loaded" && list.stays.length === 0 && <p>No hay vehículos dentro.</p>}
@@ -100,7 +109,10 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
                   <button
                     type="button"
                     aria-label={`Registrar salida de ${stay.placa}`}
-                    onClick={() => setLeaving(stay)}
+                    onClick={() => {
+                      setExitError(null);
+                      setLeaving(stay);
+                    }}
                   >
                     Registrar salida
                   </button>
