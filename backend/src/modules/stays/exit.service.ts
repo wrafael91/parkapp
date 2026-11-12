@@ -11,14 +11,18 @@ interface RegisterExitInput {
   now: Date;
 }
 
-export type RegisterExitResult = { ok: true; receiptId: number };
+export type RegisterExitResult =
+  { ok: true; receiptId: number } | { ok: false; reason: "notFound" | "notActive" };
 
 // FR-12 to FR-14. The server assigns the exit time and the user (BR-16).
 export async function registerExit(db: Db, input: RegisterExitInput): Promise<RegisterExitResult> {
-  const stay = await db.stay.findUniqueOrThrow({
+  const stay = await db.stay.findUnique({
     where: { id: input.stayId },
     include: { rate: true, gracePeriod: true },
   });
+  if (stay === null) {
+    return { ok: false, reason: "notFound" };
+  }
   // BR-11: the rate and the grace period stored with the stay, the ones in
   // force at entry. The fee is calculated before writing: a RangeError leaves
   // the stay active and issues no receipt.
@@ -28,10 +32,16 @@ export async function registerExit(db: Db, input: RegisterExitInput): Promise<Re
     valuePerMinute: stay.rate.valuePerMinute,
     gracePeriodMinutes: stay.gracePeriod.minutes,
   });
-  await db.stay.update({
-    where: { id: stay.id },
+  // RI-04: only an active stay is closed; a closed or voided one keeps its data.
+  // The condition also makes two simultaneous exits of the same stay close it
+  // once: the second one waits for the row and then updates nothing.
+  const closed = await db.stay.updateMany({
+    where: { id: stay.id, status: "ACTIVE" },
     data: { status: "CLOSED", exitTime: input.now, exitById: input.userId },
   });
+  if (closed.count === 0) {
+    return { ok: false, reason: "notActive" };
+  }
   // RI-11 and RI-12: one receipt per exit, in the same transaction, with the
   // results of the calculation as they are (data model, decision 5).
   const receipt = await db.receipt.create({ data: { stayId: stay.id, ...fee } });
