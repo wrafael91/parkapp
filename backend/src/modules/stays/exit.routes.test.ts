@@ -217,3 +217,48 @@ describe("POST /api/estadias/{id}/salida (FR-12 to FR-14, ADR 0008)", () => {
     });
   });
 });
+
+describe("POST /api/estadias/{id}/salida validation (NFR-06)", () => {
+  it.each(["abc", "0", "-1", "1.5", "1e3", "01", "2147483648"])(
+    "answers 400 ENTRADA_INVALIDA to the id %s",
+    async (id) => {
+      await withApp(async (app, db) => {
+        const { cookie } = await carInside(db, minutesFromNow(-6, -10));
+
+        const response = await postExit(app, id, cookie);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.codigo).toBe("ENTRADA_INVALIDA");
+      });
+    },
+  );
+
+  // Passes since the green of cycle M, on purpose: whoever has no session does
+  // not learn how the id is validated.
+  it("answers 401 before validating the id of a request without a session", async () => {
+    await withApp(async (app) => {
+      const response = await postExit(app, "abc");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
+    });
+  });
+
+  // Passes since the green of cycle M, on purpose: the Origin check of app.ts
+  // also covers this route (docs/modelo-amenazas.md, 7.4).
+  it("rejects an exit without Origin and leaves the stay active", async () => {
+    await withApp(async (app, db) => {
+      const { stayId, cookie } = await carInside(db, minutesFromNow(-6, -10));
+
+      const response = await request(app)
+        .post(`/api/estadias/${stayId}/salida`)
+        .set("Cookie", cookie)
+        .send({});
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("ACTIVE");
+    });
+  });
+});
