@@ -36,6 +36,16 @@ const entryBody = z.object({
 // so a later list of closed stays does not change what a request means.
 const listQuery = z.object({ estado: z.literal("ACTIVA") });
 
+// A stay id: a positive integer, without leading zeros, that fits in the
+// INTEGER column. Anything else is a 400, not a database error.
+const exitParams = z.object({
+  id: z
+    .string()
+    .regex(/^[1-9][0-9]{0,9}$/)
+    .transform(Number)
+    .refine((id) => id <= 2_147_483_647),
+});
+
 // ADR 0008: a stay in Spanish, as the entry and the list answer it.
 function toEstadia(stay: Stay) {
   return {
@@ -151,12 +161,14 @@ export function createStaysRouter(prisma: PrismaClient): Router {
   // which answers ERROR_INTERNO without details (NFR-07).
   router.post("/:id/salida", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
+    const params = exitParams.safeParse(req.params);
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
       const user = token === null ? null : await authenticate(db, { token, now });
       if (user === null) return { kind: "unauthenticated" } as const;
+      if (!params.success) return { kind: "invalid" } as const;
       const result = await registerExit(db, {
-        stayId: Number(req.params.id),
+        stayId: params.data.id,
         userId: user.id,
         ip: req.ip ?? "",
         now,
@@ -172,6 +184,9 @@ export function createStaysRouter(prisma: PrismaClient): Router {
     switch (outcome.kind) {
       case "unauthenticated":
         sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+        return;
+      case "invalid":
+        sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
         return;
       case "notFound":
         sendError(res, 404, "NO_ENCONTRADO", "La estadía no existe.");
