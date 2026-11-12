@@ -60,8 +60,8 @@ describe("vehicles inside", () => {
     renderStays();
     await screen.findByText("ABC12D");
     expect(rows()).toEqual([
-      ["ABC12D", "Moto", "Negro", "—", "10/11 21:24"],
-      ["ABC123", "Carro", "Rojo", "Mazda", "10/11 21:22"],
+      ["ABC12D", "Moto", "Negro", "—", "10/11 21:24", "Registrar salida"],
+      ["ABC123", "Carro", "Rojo", "Mazda", "10/11 21:22", "Registrar salida"],
     ]);
   });
 
