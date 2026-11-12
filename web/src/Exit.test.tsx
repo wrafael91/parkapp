@@ -215,3 +215,53 @@ describe("receipt", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("rejected exit", () => {
+  it.each([
+    [
+      "the stay is not active",
+      409,
+      "ESTADIA_NO_ACTIVA",
+      "La estadía ya no está activa: puede que ya se haya registrado su salida.",
+    ],
+    ["the stay does not exist", 404, "NO_ENCONTRADO", "La estadía no existe."],
+  ])("removes the vehicle and shows an alert when %s", async (_case, status, codigo, message) => {
+    const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(status, rejected));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+    expect(plates()).toEqual(["ABC12D"]);
+  });
+
+  it("goes back to sign in when the session ended", async () => {
+    const onSessionEnded = vi.fn();
+    const ended = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(401, ended));
+    const user = userEvent.setup();
+    renderStays(onSessionEnded);
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    ["fails", jsonResponse(500, { error: { codigo: "ERROR_INTERNO", mensaje: "Error." } })],
+    ["cannot be reached", new TypeError("Failed to fetch")],
+  ])("keeps the panel and shows a general error when the server %s", async (_case, answer) => {
+    stubFetch(jsonResponse(200, BOTH), answer);
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo registrar la salida. Intenta de nuevo.");
+    const confirm = screen.getByRole("button", { name: "Confirmar salida" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(plates()).toEqual(["ABC12D", "ABC123"]);
+  });
+});
