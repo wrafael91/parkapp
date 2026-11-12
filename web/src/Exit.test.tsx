@@ -132,3 +132,86 @@ describe("exit verification", () => {
     await panelClosed();
   });
 });
+
+describe("receipt", () => {
+  it("shows the BR-14 fields, with the times in Bogotá", async () => {
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await screen.findByRole("heading", { name: "Comprobante N.º 15" });
+    expect(screen.getByText("RoloPark")).toBeTruthy();
+    expect(fields()).toEqual([
+      ["Placa", "ABC123"],
+      ["Tipo", "Carro"],
+      ["Ingreso", "10/11/2026 21:22:00"],
+      ["Salida", "10/11/2026 21:28:10"],
+      ["Minutos cobrados", "6"],
+      ["Tarifa por minuto", "$230"],
+      ["Subtotal", "$1.380"],
+      ["Ajuste por redondeo", "−$30"],
+      ["Total (IVA incluido)", "$1.350"],
+    ]);
+  });
+
+  it("groups the thousands and shows a zero adjustment without a sign", async () => {
+    // A motorcycle of more than six days (no daily cap until #14), at its own
+    // rate, so a page with a fixed rate would fail.
+    const long = {
+      consecutivo: 16,
+      estadiaId: 8,
+      placa: "ABC12D",
+      tipoVehiculo: "MOTO",
+      horaIngreso: "2026-11-05T00:00:00.000Z",
+      horaSalida: "2026-11-11T06:00:00.000Z",
+      minutosCompletos: 9000,
+      valorMinuto: 161,
+      subtotal: 1449000,
+      ajusteRedondeo: 0,
+      total: 1449000,
+    };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, long));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC12D");
+    await confirmExit(user);
+    await screen.findByRole("heading", { name: "Comprobante N.º 16" });
+    expect(fields()).toEqual([
+      ["Placa", "ABC12D"],
+      ["Tipo", "Moto"],
+      ["Ingreso", "04/11/2026 19:00:00"],
+      ["Salida", "11/11/2026 01:00:00"],
+      ["Minutos cobrados", "9.000"],
+      ["Tarifa por minuto", "$161"],
+      ["Subtotal", "$1.449.000"],
+      ["Ajuste por redondeo", "$0"],
+      ["Total (IVA incluido)", "$1.449.000"],
+    ]);
+  });
+
+  it("prints it with the browser", async () => {
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await user.click(await screen.findByRole("button", { name: "Imprimir" }));
+    expect(print).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "Comprobante N.º 15" })).toBeTruthy();
+  });
+
+  it("goes back to the list without that vehicle when closed", async () => {
+    const fetchMock = stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await user.click(await screen.findByRole("button", { name: "Cerrar" }));
+    expect(plates()).toEqual(["ABC12D"]);
+    // The list is not asked for again.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
