@@ -1,47 +1,22 @@
 import { useEffect, useState, type SubmitEvent } from "react";
+import Exit from "./Exit.tsx";
+import { formatEntryTime, VEHICLE_TYPES, type Estadia } from "./stay.ts";
 
 // GET and POST /api/estadias (ADR 0008), with a relative URL and the default
 // fetch, as in App.tsx: the browser sends the session cookie by itself, without
 // credentials: "include" (docs/modelo-amenazas.md, 7.3).
 const STAYS_URL = "/api/estadias";
 
-// A stay as the API answers it (ADR 0008).
-type Estadia = {
-  id: number;
-  placa: string;
-  tipoVehiculo: "CARRO" | "MOTO";
-  color: string;
-  marca: string | null;
-  horaIngreso: string;
-};
-
-const VEHICLE_TYPES = { CARRO: "Carro", MOTO: "Moto" };
-
-// ADR 0008, decision 5: the API sends UTC and the page shows Bogotá time, as
-// dd/mm HH:mm. It is put together from the parts, so the separators do not
-// depend on the ICU version of each browser or Node.
-const BOGOTA_TIME = new Intl.DateTimeFormat("es-CO", {
-  timeZone: "America/Bogota",
-  day: "2-digit",
-  month: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function formatEntryTime(iso: string): string {
-  const parts = Object.fromEntries(
-    BOGOTA_TIME.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
-  );
-  return `${parts.day}/${parts.month} ${parts.hour}:${parts.minute}`;
-}
-
 type List = { status: "loading" } | { status: "failed" } | { status: "loaded"; stays: Estadia[] };
 
 // The screen after signing in: the entry form and the vehicles inside (US-06,
-// US-07). A 401 means the session ended, so the page goes back to sign in.
+// US-07), and the exit of each one (US-08, US-09). A 401 means the session
+// ended, so the page goes back to sign in.
 export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [list, setList] = useState<List>({ status: "loading" });
+  // The stay whose exit is being registered. While there is one, the exit takes
+  // the place of the form and the list.
+  const [leaving, setLeaving] = useState<Estadia | null>(null);
 
   useEffect(() => {
     // Loads once, when the screen appears. The API sends the newest first.
@@ -72,6 +47,25 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
     );
   }
 
+  // The stay left, so it leaves the list.
+  function removeStay(id: number) {
+    setList((current) =>
+      current.status === "loaded"
+        ? { status: "loaded", stays: current.stays.filter((stay) => stay.id !== id) }
+        : current,
+    );
+  }
+
+  if (leaving) {
+    return (
+      <Exit
+        stay={leaving}
+        onExited={() => removeStay(leaving.id)}
+        onClose={() => setLeaving(null)}
+      />
+    );
+  }
+
   return (
     <>
       <h2>Registrar ingreso</h2>
@@ -89,6 +83,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
               <th>Color</th>
               <th>Marca</th>
               <th>Ingreso</th>
+              <th>Salida</th>
             </tr>
           </thead>
           <tbody>
@@ -100,6 +95,15 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
                 <td>{stay.marca ?? "—"}</td>
                 <td>
                   <time dateTime={stay.horaIngreso}>{formatEntryTime(stay.horaIngreso)}</time>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    aria-label={`Registrar salida de ${stay.placa}`}
+                    onClick={() => setLeaving(stay)}
+                  >
+                    Registrar salida
+                  </button>
                 </td>
               </tr>
             ))}
