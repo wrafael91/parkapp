@@ -10,6 +10,7 @@ import '@fontsource/barlow-condensed/latin-700.css'
 import './index.css'
 import './styles/layout.css'
 import './styles/components.css'
+import './styles/receipt.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
