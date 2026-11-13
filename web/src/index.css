@@ -1,20 +1,71 @@
+/* The look of the prototypes in the article for the Semana TIC: black, greys
+   and white, with the plates in the yellow of a Colombian plate. */
+:root {
+  --ink: #1c1c1c;
+  --ink-soft: #595959;
+  --page: #ebebeb;
+  --card: #ffffff;
+  --line: #d4d4d4;
+  --line-soft: #e5e5e5;
+  --field-border: #b3b3b3;
+  --plate: #f5c400;
+  --danger: #b42318;
+  --danger-text: #7a1a12;
+  --danger-background: #fdf0ef;
+  --font-text: "Barlow", system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
-  margin: 2rem;
-  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-text);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+h2 {
+  margin-bottom: 1.25rem;
+  font-size: 1.625rem;
+}
+
+p {
+  margin: 0 0 1rem;
 }
 
 label {
   display: block;
   margin-bottom: 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
 }
 
 input,
 select {
   display: block;
-  box-sizing: border-box;
   width: 100%;
-  max-width: 20rem;
-  margin-top: 0.25rem;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--field-border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
 }
 
 /* 16 px text, so phones do not zoom in when a field gets focus. */
@@ -22,16 +73,15 @@ input,
 select,
 button {
   font: inherit;
+  font-size: 1rem;
 }
 
-table {
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 0.25rem 1rem 0.25rem 0;
-  text-align: left;
+/* A visible keyboard focus on every control. */
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* The entry time on one line on phones. */
@@ -39,35 +89,6 @@ time {
   white-space: nowrap;
 }
 
-/* The entry data of an exit and the receipt: each term next to its value. */
-dl {
-  display: grid;
-  grid-template-columns: max-content auto;
-  gap: 0.25rem 1rem;
-}
-
-dd {
-  margin: 0;
-}
-
-/* The buttons of the exit, side by side. */
-section button {
-  margin-right: 0.5rem;
-}
-
-/* FR-14: printed, the receipt goes alone on the page, without its buttons.
-   Only when there is a receipt, so printing the list does not give a blank page. */
-@media print {
-  body {
-    margin: 0;
-  }
-
-  main:has(.receipt) > :not(.receipt),
-  .receipt button {
-    display: none;
-  }
-}
-
-@page {
-  margin: 1.5cm;
+.muted {
+  color: var(--ink-soft);
 }
