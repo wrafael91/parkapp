@@ -1,0 +1,179 @@
+/* A Colombian plate: yellow, with a black border and condensed letters. */
+.plate {
+  display: inline-block;
+  min-width: 5.5rem;
+  padding: 0.05rem 0.5rem;
+  border: 2px solid #111111;
+  border-radius: 5px;
+  background: var(--plate);
+  color: #111111;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.plate-large {
+  min-width: 8.5rem;
+  padding: 0.1rem 1rem;
+  border-width: 2.5px;
+  font-size: 1.75rem;
+}
+
+/* The plate field looks like the plate. Only the look is in capitals: the
+   server normalizes what was typed (FR-08). */
+.plate-input {
+  padding: 0.3rem 0.5rem;
+  border: 2.5px solid #111111;
+  background: var(--plate);
+  color: #111111;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Buttons: filled for the main action, outlined for the others. */
+.button-primary,
+.button-secondary,
+.button-on-dark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.1rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-primary {
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.button-primary:hover:enabled {
+  background: #3a3a3a;
+}
+
+.button-secondary {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.button-secondary:hover:enabled {
+  background: #f0f0f0;
+}
+
+.button-on-dark {
+  border-color: #ffffff;
+  background: transparent;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.button-on-dark:hover:enabled {
+  background: rgb(255 255 255 / 12%);
+}
+
+.button-on-dark:focus-visible {
+  outline-color: #ffffff;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+form .button-primary {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* The vehicles inside. On a phone the table scrolls inside its card. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.stays {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stays th {
+  padding: 0 1rem 0.6rem 0;
+  border-bottom: 1.5px solid var(--ink);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.stays td {
+  padding: 0.6rem 1rem 0.6rem 0;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+
+.stays tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.stays .column-exit {
+  padding-right: 0;
+  text-align: right;
+}
+
+.stays .button-secondary {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Alerts: a box that stands out, still announced by role="alert". */
+.alert {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-background);
+  color: var(--danger-text);
+}
+
+form .alert,
+.actions + .alert {
+  margin: 1rem 0 0;
+}
+
+/* The entry data to check before the exit (Image 3a). */
+.exit-data {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.85rem 2.5rem;
+  align-items: center;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.exit-data dt {
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.exit-data dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
