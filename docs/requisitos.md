@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44) |
-| Versión | 1.5 — 30 de octubre de 2026 |
+| Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71) |
+| Versión | 1.6 — 12 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -406,6 +406,7 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.3 | 20 de octubre de 2026 | FR-21 y FR-22: corrección de estadías por reemplazo (BR-17). US-10 pasa a "Anular o corregir una estadía", con cuatro criterios nuevos. Nueva fila en la matriz de permisos. Origen de FR-02 (NFR-04) y FR-10 (necesidad operativa). Regla para las historias Should, y dependencia de NFR-14 respecto de US-13. |
 | 1.4 | 22 de octubre de 2026 | El administrador también corrige registros (BR-17). US-05 usa los actores definidos. US-09: el comprobante muestra su número consecutivo. |
 | 1.5 | 30 de octubre de 2026 | Replaneación del Sprint 2 del 26 de octubre, según la capacidad medida: US-11, NFR-03, NFR-08 y NFR-22 pasan al Sprint 3, y US-07, NFR-02 y NFR-05 se completan en el Sprint 3. El script de arranque carga la tarifa. Correcciones: frase duplicada en la sección 3, criterio de US-04 fuera de lugar, criterio repetido en US-06 y referencias de la sección 6 partidas por el historial. |
+| 1.6 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). (#71) |
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 5.0.0*. https://owasp.org/www-project-application-security-verification-standard/
