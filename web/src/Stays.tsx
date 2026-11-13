@@ -113,7 +113,9 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
               <tbody>
                 {list.stays.map((stay) => (
                   <tr key={stay.id}>
-                    <td>{stay.placa}</td>
+                    <td>
+                      <span className="plate">{stay.placa}</span>
+                    </td>
                     <td>{VEHICLE_TYPES[stay.tipoVehiculo]}</td>
                     <td>{stay.color}</td>
                     <td>{stay.marca ?? "—"}</td>
@@ -212,6 +214,7 @@ function EntryForm({
         Placa
         <input
           name="placa"
+          className="plate-input"
           required
           maxLength={20}
           autoComplete="off"
