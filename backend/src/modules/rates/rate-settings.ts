@@ -3,11 +3,24 @@ import type { Prisma, VehicleType } from "../../generated/prisma/client.js";
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
 
+// Who changed a value from the app (US-11 and US-12). The bootstrap script
+// leaves it out: it acts as the system, so its events have no user and no IP.
+export interface ChangedBy {
+  userId: number;
+  ip: string;
+}
+
+// NFR-12 and RI-18: the user and the IP go together, or neither does.
+function auditActor(changedBy: ChangedBy | undefined) {
+  return changedBy === undefined ? {} : { userId: changedBy.userId, ip: changedBy.ip };
+}
+
 interface SetRateInput {
   vehicleType: VehicleType;
   valuePerMinute: number;
   createdById: number;
   now: Date;
+  changedBy?: ChangedBy;
 }
 
 export type SetRateResult =
@@ -15,7 +28,7 @@ export type SetRateResult =
   | { ok: false; reason: "invalidValue" | "noLegalCap" }
   | { ok: false; reason: "aboveLegalCap"; legalCap: number };
 
-// The bootstrap script loads the rate (US-11 moves it to the app in Sprint 3).
+// FR-16: the administrator from the app (US-11), or the bootstrap script.
 export async function setRate(db: Db, input: SetRateInput): Promise<SetRateResult> {
   // RI-09: whole pesos per minute, VAT included (BR-09), greater than zero.
   if (!Number.isInteger(input.valuePerMinute) || input.valuePerMinute <= 0) {
@@ -50,10 +63,17 @@ export async function setRate(db: Db, input: SetRateInput): Promise<SetRateResul
       createdById: input.createdById,
     },
   });
-  // The script acts as the system, not through a request, so the event has no
-  // user and no IP (RI-18), like CUENTA_CREADA. creada_por_id keeps the account.
+  // From the app, the event has the user and the IP (NFR-12). From the script,
+  // a system event without either (RI-18), like CUENTA_CREADA; creada_por_id
+  // keeps the account.
   await db.auditEvent.create({
-    data: { action: "RATE_CHANGED", entity: "tarifa", entityId: rate.id, occurredAt: input.now },
+    data: {
+      action: "RATE_CHANGED",
+      entity: "tarifa",
+      entityId: rate.id,
+      occurredAt: input.now,
+      ...auditActor(input.changedBy),
+    },
   });
   return { ok: true, rateId: rate.id };
 }
@@ -62,12 +82,13 @@ interface SetGracePeriodInput {
   minutes: number;
   createdById: number;
   now: Date;
+  changedBy?: ChangedBy;
 }
 
 export type SetGracePeriodResult =
   { ok: true; gracePeriodId: number } | { ok: false; reason: "invalidMinutes" };
 
-// The bootstrap script loads the grace period (US-12 moves it to the app later).
+// FR-17: the administrator from the app (US-12), or the bootstrap script.
 export async function setGracePeriod(
   db: Db,
   input: SetGracePeriodInput,
@@ -84,13 +105,14 @@ export async function setGracePeriod(
   const gracePeriod = await db.gracePeriod.create({
     data: { minutes: input.minutes, validFrom: input.now, createdById: input.createdById },
   });
-  // A system event, like TARIFA_CAMBIADA from the script (RI-18).
+  // With the user and the IP from the app, as TARIFA_CAMBIADA (NFR-12, RI-18).
   await db.auditEvent.create({
     data: {
       action: "GRACE_PERIOD_CHANGED",
       entity: "periodo_gracia",
       entityId: gracePeriod.id,
       occurredAt: input.now,
+      ...auditActor(input.changedBy),
     },
   });
   return { ok: true, gracePeriodId: gracePeriod.id };

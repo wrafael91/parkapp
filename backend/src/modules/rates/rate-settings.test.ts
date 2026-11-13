@@ -91,6 +91,32 @@ describe("setRate (BR-09, BR-10)", () => {
     });
   });
 
+  it("records TARIFA_CAMBIADA with the user and the IP of a change from the app (NFR-12)", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+
+      const result = await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 200,
+        createdById,
+        now: NOW,
+        changedBy: { userId: createdById, ip: "203.0.113.20" },
+      });
+
+      if (!result.ok) throw new Error("rate not created");
+      const events = await db.auditEvent.findMany({
+        where: { action: "RATE_CHANGED", entity: "tarifa", entityId: result.rateId },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        userId: createdById,
+        detail: null,
+        ip: "203.0.113.20",
+        occurredAt: NOW,
+      });
+    });
+  });
+
   it("accepts a rate equal to the legal cap (BR-10)", async () => {
     await asApp(async (db) => {
       const createdById = await createAdmin(db);
@@ -236,6 +262,35 @@ describe("setGracePeriod (BR-08, BR-11)", () => {
       });
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ userId: null, detail: null, ip: null, occurredAt: NOW });
+    });
+  });
+
+  it("records PERIODO_GRACIA_CAMBIADO with the user and the IP of a change from the app (NFR-12)", async () => {
+    await asApp(async (db) => {
+      const createdById = await createAdmin(db);
+
+      const result = await setGracePeriod(db, {
+        minutes: 10,
+        createdById,
+        now: NOW,
+        changedBy: { userId: createdById, ip: "203.0.113.20" },
+      });
+
+      if (!result.ok) throw new Error("grace period not created");
+      const events = await db.auditEvent.findMany({
+        where: {
+          action: "GRACE_PERIOD_CHANGED",
+          entity: "periodo_gracia",
+          entityId: result.gracePeriodId,
+        },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        userId: createdById,
+        detail: null,
+        ip: "203.0.113.20",
+        occurredAt: NOW,
+      });
     });
   });
 
