@@ -103,3 +103,42 @@
     padding: 1.25rem 1rem;
   }
 }
+
+/* The brand and, for an administrator, the sections (Image 4 of the article). */
+.topbar-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 2rem;
+}
+
+.topbar-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* Text on the dark bar; the current section is underlined. */
+.topbar-nav button {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #d9d9d9;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.topbar-nav button:hover {
+  color: #ffffff;
+}
+
+.topbar-nav button[aria-current="page"] {
+  border-bottom-color: #ffffff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.topbar-nav button:focus-visible {
+  outline-color: #ffffff;
+}

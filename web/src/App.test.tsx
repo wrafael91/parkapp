@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import App from "./App.tsx";
@@ -168,5 +168,66 @@ describe("stays screen", () => {
     await user.type(screen.getByLabelText("Color"), "Rojo");
     await user.click(screen.getByRole("button", { name: "Registrar ingreso" }));
     await screen.findByRole("button", { name: "Iniciar sesión" });
+  });
+});
+
+describe("sections (matrix 1.2)", () => {
+  const RATES = {
+    tarifas: [
+      {
+        tipoVehiculo: "CARRO",
+        valorMinuto: 230,
+        topeLegal: 230,
+        vigenteDesde: "2026-11-07T17:35:00.000Z",
+      },
+      {
+        tipoVehiculo: "MOTO",
+        valorMinuto: 161,
+        topeLegal: 161,
+        vigenteDesde: "2026-11-07T17:35:00.000Z",
+      },
+    ],
+  };
+  const GRACE_PERIOD = { minutos: 5, vigenteDesde: "2026-11-07T17:35:00.000Z" };
+
+  it("lets an administrator switch between Operación and Tarifas", async () => {
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, RATES),
+      jsonResponse(200, GRACE_PERIOD),
+      jsonResponse(200, NO_STAYS),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    const sections = await screen.findByRole("navigation", { name: "Secciones" });
+    const operation = within(sections).getByRole("button", { name: "Operación" });
+    const rates = within(sections).getByRole("button", { name: "Tarifas" });
+    expect(operation.getAttribute("aria-current")).toBe("page");
+    await screen.findByText("No hay vehículos dentro.");
+
+    await user.click(rates);
+
+    await screen.findByRole("heading", { name: "Tarifa por minuto" });
+    expect(rates.getAttribute("aria-current")).toBe("page");
+    expect(operation.getAttribute("aria-current")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Registrar ingreso" })).toBeNull();
+
+    await user.click(operation);
+
+    await screen.findByRole("heading", { name: "Registrar ingreso" });
+    expect(screen.queryByRole("heading", { name: "Tarifa por minuto" })).toBeNull();
+  });
+
+  it("shows an operator no sections, so no Tarifas", async () => {
+    stubFetch(
+      jsonResponse(200, { usuario: { ...ACTIVE_SESSION.usuario, rol: "OPERADOR" } }),
+      jsonResponse(200, NO_STAYS),
+    );
+    render(<App />);
+
+    await screen.findByText("No hay vehículos dentro.");
+    expect(screen.queryByRole("navigation", { name: "Secciones" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tarifas" })).toBeNull();
   });
 });

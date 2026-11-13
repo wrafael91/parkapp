@@ -1,0 +1,118 @@
+/* The rate and the grace period (Image 4 of the article): side by side on a
+   wide screen, one under the other on a phone. */
+.rates {
+  display: grid;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.rates > * {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .rates {
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  }
+}
+
+.rates h2 {
+  margin-bottom: 0.75rem;
+}
+
+.rates .muted {
+  font-size: 0.9375rem;
+}
+
+.rates-table {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-collapse: collapse;
+}
+
+.rates-table th {
+  padding: 0 1rem 0.6rem 0;
+  border-bottom: 1.5px solid var(--ink);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rates-table td {
+  padding: 0.6rem 1rem 0.6rem 0;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.rates-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rates-table input {
+  width: 6.5rem;
+  margin-top: 0;
+}
+
+.rates-table .column-save {
+  padding-right: 0;
+  text-align: right;
+}
+
+.rates-table .button-primary {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.9rem;
+}
+
+/* On a phone the five columns fit without scrolling: the headers may wrap,
+   and the field and the button get narrower. */
+@media (max-width: 30rem) {
+  .rates-table th {
+    white-space: normal;
+  }
+
+  .rates-table th,
+  .rates-table td {
+    padding-right: 0.5rem;
+  }
+
+  .rates-table input {
+    width: 4.5rem;
+    padding: 0.5rem;
+  }
+
+  .rates-table .button-primary {
+    padding: 0.45rem 0.7rem;
+  }
+}
+
+/* The grace period: the field and the button fill the card. */
+.rates label + .button-primary {
+  width: 100%;
+}
+
+.rates .button-primary + .alert,
+.rates .button-primary + .saved {
+  margin: 1rem 0 0;
+}
+
+/* What was saved: quieter than an alert, still announced by role="status". */
+.saved {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--ink);
+  border-radius: 6px;
+  background: var(--line-soft);
+}
+
+/* Read by screen readers only, like the header of the column of buttons. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
