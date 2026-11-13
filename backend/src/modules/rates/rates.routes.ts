@@ -8,6 +8,7 @@ import type {
   VehicleType,
 } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
+import { recordAccessDenied } from "../accounts/access-denied.js";
 import { readSessionToken } from "../accounts/session-cookie.js";
 import { authenticate, type SessionUser } from "../accounts/session.service.js";
 import { setGracePeriod, setRate } from "./rate-settings.js";
@@ -33,10 +34,28 @@ const rateBody = z.object({
 });
 const gracePeriodBody = z.object({ minutos: z.number() });
 
-// Without a session, 401 before anything else (NFR-04).
-async function signedInUser(db: Db, req: Request, now: Date): Promise<SessionUser | null> {
+// Matrix 1.2: only an administrator configures the rate and the grace period.
+// Without a session, 401 before anything else; an operator gets 403, and the
+// rejection is logged (NFR-05). The body is validated after this.
+async function authorizeAdministrator(
+  db: Db,
+  req: Request,
+  now: Date,
+): Promise<{ kind: "unauthenticated" | "denied" } | { kind: "allowed"; user: SessionUser }> {
   const token = readSessionToken(req.get("Cookie"));
-  return token === null ? null : await authenticate(db, { token, now });
+  const user = token === null ? null : await authenticate(db, { token, now });
+  if (user === null) return { kind: "unauthenticated" };
+  if (user.role !== "ADMINISTRATOR") {
+    await recordAccessDenied(db, {
+      userId: user.id,
+      ip: req.ip ?? "",
+      method: req.method,
+      url: req.originalUrl,
+      now,
+    });
+    return { kind: "denied" };
+  }
+  return { kind: "allowed", user };
 }
 
 function current(now: Date) {
@@ -54,10 +73,11 @@ function toTarifa(rate: Rate, legalCap: LegalCap) {
 }
 
 const NO_SESSION = "No hay una sesión activa.";
+const NOT_ALLOWED = "No tienes permiso para esta acción.";
 const INVALID = "Los datos enviados no son válidos.";
 
 // The Origin check runs before these routes (app.ts). Each request runs in one
-// transaction, and the response goes out after it commits.
+// transaction, and the response goes out after it commits, so a 403 is logged.
 export function createRatesRouter(prisma: PrismaClient): Router {
   const router = Router();
 
@@ -65,8 +85,8 @@ export function createRatesRouter(prisma: PrismaClient): Router {
   router.get("/", async (req, res) => {
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
-      const user = await signedInUser(db, req, now);
-      if (user === null) return { kind: "unauthenticated" } as const;
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
       const tarifas = [];
       for (const vehicleType of Object.values(VEHICLE_TYPES)) {
         const legalCap = await db.legalCap.findFirst({ where: { vehicleType, ...current(now) } });
@@ -80,6 +100,9 @@ export function createRatesRouter(prisma: PrismaClient): Router {
       case "unauthenticated":
         sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
         return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
+        return;
       case "listed":
         res.status(200).json({ tarifas: outcome.tarifas });
     }
@@ -90,15 +113,15 @@ export function createRatesRouter(prisma: PrismaClient): Router {
     const body = rateBody.safeParse(req.body);
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
-      const user = await signedInUser(db, req, now);
-      if (user === null) return { kind: "unauthenticated" } as const;
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
       if (!body.success) return { kind: "invalid" } as const;
       const result = await setRate(db, {
         vehicleType: VEHICLE_TYPES[body.data.tipoVehiculo],
         valuePerMinute: body.data.valorMinuto,
-        createdById: user.id,
+        createdById: access.user.id,
         now,
-        changedBy: { userId: user.id, ip: req.ip ?? "" },
+        changedBy: { userId: access.user.id, ip: req.ip ?? "" },
       });
       if (!result.ok) {
         if (result.reason === "invalidValue") return { kind: "invalid" } as const;
@@ -117,6 +140,9 @@ export function createRatesRouter(prisma: PrismaClient): Router {
     switch (outcome.kind) {
       case "unauthenticated":
         sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
         return;
       case "invalid":
         sendError(res, 400, "ENTRADA_INVALIDA", INVALID);
@@ -150,8 +176,8 @@ export function createGracePeriodRouter(prisma: PrismaClient): Router {
   router.get("/", async (req, res) => {
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
-      const user = await signedInUser(db, req, now);
-      if (user === null) return { kind: "unauthenticated" } as const;
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
       const gracePeriod = await db.gracePeriod.findFirst({ where: current(now) });
       return { kind: "found", gracePeriod } as const;
     });
@@ -159,6 +185,9 @@ export function createGracePeriodRouter(prisma: PrismaClient): Router {
     switch (outcome.kind) {
       case "unauthenticated":
         sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
         return;
       case "found":
         res.status(200).json({
@@ -173,14 +202,14 @@ export function createGracePeriodRouter(prisma: PrismaClient): Router {
     const body = gracePeriodBody.safeParse(req.body);
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
-      const user = await signedInUser(db, req, now);
-      if (user === null) return { kind: "unauthenticated" } as const;
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
       if (!body.success) return { kind: "invalid" } as const;
       const result = await setGracePeriod(db, {
         minutes: body.data.minutos,
-        createdById: user.id,
+        createdById: access.user.id,
         now,
-        changedBy: { userId: user.id, ip: req.ip ?? "" },
+        changedBy: { userId: access.user.id, ip: req.ip ?? "" },
       });
       if (!result.ok) return { kind: "invalid" } as const;
       const gracePeriod = await db.gracePeriod.findUniqueOrThrow({
@@ -192,6 +221,9 @@ export function createGracePeriodRouter(prisma: PrismaClient): Router {
     switch (outcome.kind) {
       case "unauthenticated":
         sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
         return;
       case "invalid":
         sendError(res, 400, "ENTRADA_INVALIDA", INVALID);
