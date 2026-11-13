@@ -306,3 +306,74 @@ describe("a change does not touch the stays inside (BR-11)", () => {
     });
   });
 });
+
+describe("access to the rate routes (NFR-05, matrix 1.2)", () => {
+  const routes = [
+    ["GET", "/api/tarifas", undefined],
+    ["GET", "/api/periodo-gracia", undefined],
+    ["POST", "/api/tarifas", { tipoVehiculo: "CARRO", valorMinuto: 200 }],
+    ["POST", "/api/periodo-gracia", { minutos: 10 }],
+  ] as const;
+
+  function send(app: Express, method: string, url: string, cookie?: string, body?: object) {
+    return method === "GET" ? get(app, url, cookie) : post(app, url, cookie, body ?? {});
+  }
+
+  it.each(routes)("%s %s without a session answers 401 before validating", async (method, url) => {
+    await withApp(async (app) => {
+      const response = await send(app, method, url, undefined, { valorMinuto: "x" });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
+    });
+  });
+
+  it.each(routes)(
+    "%s %s by an operator answers 403 and logs ACCESO_DENEGADO",
+    async (method, url, body) => {
+      await withApp(async (app, db) => {
+        const { user, cookie } = await signedIn(db, "OPERATOR");
+        const ratesBefore = await db.rate.count();
+        const versionsBefore = await db.gracePeriod.count();
+
+        const response = await send(app, method, `${url}?origen=prueba`, cookie, body);
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({
+          error: { codigo: "ACCESO_DENEGADO", mensaje: "No tienes permiso para esta acción." },
+        });
+        const events = await db.auditEvent.findMany({
+          where: { action: "ACCESS_DENIED", userId: user.id },
+        });
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ detail: { metodo: method, ruta: url }, ip: IP });
+        expect(await db.rate.count()).toBe(ratesBefore);
+        expect(await db.gracePeriod.count()).toBe(versionsBefore);
+      });
+    },
+  );
+
+  it("an operator gets 403 before the body is validated", async () => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(db, "OPERATOR");
+
+      const response = await post(app, "/api/tarifas", cookie, { valorMinuto: "x" });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  it("a change without Origin answers 403 ORIGEN_NO_PERMITIDO", async () => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await request(app)
+        .post("/api/tarifas")
+        .set("Cookie", cookie)
+        .send({ tipoVehiculo: "CARRO", valorMinuto: 200 });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
+    });
+  });
+});
