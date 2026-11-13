@@ -1,4 +1,4 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
 import Stays from "./Stays.tsx";
 
 // GET, POST and DELETE /api/sesion (ADR 0008), with a relative URL and the
@@ -37,18 +37,39 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
+  if (session.status === "signedIn") {
+    return <SignedIn user={session.user} onSignedOut={() => setSession({ status: "signedOut" })} />;
+  }
+
   return (
-    <main>
-      <h1>RoloPark</h1>
-      {session.status === "checking" && <p>Comprobando la sesión…</p>}
-      {session.status === "unavailable" && <p>No se pudo conectar con el servidor.</p>}
-      {session.status === "signedOut" && (
-        <SignInForm onSignedIn={(user) => setSession({ status: "signedIn", user })} />
-      )}
-      {session.status === "signedIn" && (
-        <SignedIn user={session.user} onSignedOut={() => setSession({ status: "signedOut" })} />
-      )}
-    </main>
+    <>
+      <TopBar />
+      <main className="page page-centered">
+        {session.status === "checking" && <p className="muted">Comprobando la sesión…</p>}
+        {session.status === "unavailable" && (
+          <p className="alert">No se pudo conectar con el servidor.</p>
+        )}
+        {session.status === "signedOut" && (
+          <SignInForm onSignedIn={(user) => setSession({ status: "signedIn", user })} />
+        )}
+      </main>
+    </>
+  );
+}
+
+// The bar on top of every screen: the name of the product and, when there is a
+// session, who signed in and the button to sign out.
+function TopBar({ children }: { children?: ReactNode }) {
+  return (
+    <header className="topbar">
+      <h1 className="brand">
+        <span className="brand-mark" aria-hidden="true">
+          RP
+        </span>
+        RoloPark
+      </h1>
+      {children && <div className="topbar-session">{children}</div>}
+    </header>
   );
 }
 
@@ -76,18 +97,27 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label>
-        Correo
-        <input name="correo" type="email" autoComplete="username" required />
-      </label>
-      <label>
-        Contraseña
-        <input name="contrasena" type="password" autoComplete="current-password" required />
-      </label>
-      <button type="submit">Iniciar sesión</button>
-      {error && <p role="alert">{error}</p>}
-    </form>
+    <section className="card sign-in">
+      <h2>Iniciar sesión</h2>
+      <form onSubmit={handleSubmit}>
+        <label>
+          Correo
+          <input name="correo" type="email" autoComplete="username" required />
+        </label>
+        <label>
+          Contraseña
+          <input name="contrasena" type="password" autoComplete="current-password" required />
+        </label>
+        <button type="submit" className="button-primary">
+          Iniciar sesión
+        </button>
+        {error && (
+          <p role="alert" className="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </section>
   );
 }
 
@@ -107,12 +137,20 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
 
   return (
     <>
-      <p>Sesión iniciada: {user.nombre}</p>
-      <button type="button" onClick={handleSignOut}>
-        Cerrar sesión
-      </button>
-      {error && <p role="alert">{error}</p>}
-      <Stays onSessionEnded={onSignedOut} />
+      <TopBar>
+        <p>Sesión iniciada: {user.nombre}</p>
+        <button type="button" className="button-on-dark" onClick={handleSignOut}>
+          Cerrar sesión
+        </button>
+      </TopBar>
+      <main className="page">
+        {error && (
+          <p role="alert" className="alert">
+            {error}
+          </p>
+        )}
+        <Stays onSessionEnded={onSignedOut} />
+      </main>
     </>
   );
 }

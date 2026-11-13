@@ -75,54 +75,74 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   }
 
   return (
-    <>
-      <h2>Registrar ingreso</h2>
-      <EntryForm onRegistered={addStay} onSessionEnded={onSessionEnded} />
-      <h2>Vehículos dentro</h2>
-      {exitError && <p role="alert">{exitError}</p>}
-      {list.status === "loading" && <p>Cargando…</p>}
-      {list.status === "failed" && <p role="alert">No se pudo cargar la lista de vehículos.</p>}
-      {list.status === "loaded" && list.stays.length === 0 && <p>No hay vehículos dentro.</p>}
-      {list.status === "loaded" && list.stays.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Placa</th>
-              <th>Tipo</th>
-              <th>Color</th>
-              <th>Marca</th>
-              <th>Ingreso</th>
-              <th>Salida</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.stays.map((stay) => (
-              <tr key={stay.id}>
-                <td>{stay.placa}</td>
-                <td>{VEHICLE_TYPES[stay.tipoVehiculo]}</td>
-                <td>{stay.color}</td>
-                <td>{stay.marca ?? "—"}</td>
-                <td>
-                  <time dateTime={stay.horaIngreso}>{formatEntryTime(stay.horaIngreso)}</time>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    aria-label={`Registrar salida de ${stay.placa}`}
-                    onClick={() => {
-                      setExitError(null);
-                      setLeaving(stay);
-                    }}
-                  >
-                    Registrar salida
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </>
+    <div className="operation">
+      <section className="card">
+        <h2>Registrar ingreso</h2>
+        <EntryForm onRegistered={addStay} onSessionEnded={onSessionEnded} />
+      </section>
+      <section className="card">
+        <h2>Vehículos dentro</h2>
+        {exitError && (
+          <p role="alert" className="alert">
+            {exitError}
+          </p>
+        )}
+        {list.status === "loading" && <p className="muted">Cargando…</p>}
+        {list.status === "failed" && (
+          <p role="alert" className="alert">
+            No se pudo cargar la lista de vehículos.
+          </p>
+        )}
+        {list.status === "loaded" && list.stays.length === 0 && (
+          <p className="muted">No hay vehículos dentro.</p>
+        )}
+        {list.status === "loaded" && list.stays.length > 0 && (
+          // On a phone the table scrolls inside its card, not the whole page.
+          <div className="table-scroll">
+            <table className="stays">
+              <thead>
+                <tr>
+                  <th>Placa</th>
+                  <th>Tipo</th>
+                  <th>Color</th>
+                  <th>Marca</th>
+                  <th>Ingreso</th>
+                  <th className="column-exit">Salida</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.stays.map((stay) => (
+                  <tr key={stay.id}>
+                    <td>
+                      <span className="plate">{stay.placa}</span>
+                    </td>
+                    <td>{VEHICLE_TYPES[stay.tipoVehiculo]}</td>
+                    <td>{stay.color}</td>
+                    <td>{stay.marca ?? "—"}</td>
+                    <td>
+                      <time dateTime={stay.horaIngreso}>{formatEntryTime(stay.horaIngreso)}</time>
+                    </td>
+                    <td className="column-exit">
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        aria-label={`Registrar salida de ${stay.placa}`}
+                        onClick={() => {
+                          setExitError(null);
+                          setLeaving(stay);
+                        }}
+                      >
+                        Registrar salida
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -194,6 +214,7 @@ function EntryForm({
         Placa
         <input
           name="placa"
+          className="plate-input"
           required
           maxLength={20}
           autoComplete="off"
@@ -215,10 +236,14 @@ function EntryForm({
         Marca (opcional)
         <input name="marca" maxLength={40} autoComplete="off" />
       </label>
-      <button type="submit" disabled={sending}>
+      <button type="submit" className="button-primary" disabled={sending}>
         Registrar ingreso
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert">
+          {error}
+        </p>
+      )}
     </form>
   );
 }

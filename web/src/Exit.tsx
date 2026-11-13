@@ -115,12 +115,14 @@ export default function Exit({
   if (receipt) return <Receipt receipt={receipt} onClose={onClose} />;
 
   return (
-    <section>
+    <section className="card exit">
       <h2>Verificar salida</h2>
-      <p>Revisa que los datos del ingreso coincidan con el vehículo que sale.</p>
-      <dl>
+      <p className="muted">Revisa que los datos del ingreso coincidan con el vehículo que sale.</p>
+      <dl className="exit-data">
         <dt>Placa</dt>
-        <dd>{stay.placa}</dd>
+        <dd>
+          <span className="plate plate-large">{stay.placa}</span>
+        </dd>
         <dt>Tipo</dt>
         <dd>{VEHICLE_TYPES[stay.tipoVehiculo]}</dd>
         <dt>Color</dt>
@@ -132,27 +134,35 @@ export default function Exit({
           <time dateTime={stay.horaIngreso}>{formatEntryTime(stay.horaIngreso)}</time>
         </dd>
       </dl>
-      <button type="button" disabled={sending} onClick={confirmExit}>
-        Confirmar salida
-      </button>
-      <button type="button" disabled={sending} onClick={onClose}>
-        Cancelar
-      </button>
-      {error && <p role="alert">{error}</p>}
+      <div className="actions">
+        <button type="button" className="button-primary" disabled={sending} onClick={confirmExit}>
+          Confirmar salida
+        </button>
+        <button type="button" className="button-secondary" disabled={sending} onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="alert">
+          {error}
+        </p>
+      )}
     </section>
   );
 }
 
 // The receipt (BR-14, FR-14). When printed, only this section goes on the page
-// (index.css).
+// (styles/receipt.css).
 function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => void }) {
   return (
-    <section className="receipt">
-      <p>RoloPark</p>
+    <section className="card exit receipt">
+      <p className="receipt-brand">RoloPark</p>
       <h2>Comprobante N.º {receipt.consecutivo}</h2>
-      <dl>
+      <dl className="receipt-data">
         <dt>Placa</dt>
-        <dd>{receipt.placa}</dd>
+        <dd>
+          <span className="plate">{receipt.placa}</span>
+        </dd>
         <dt>Tipo</dt>
         <dd>{VEHICLE_TYPES[receipt.tipoVehiculo]}</dd>
         <dt>Ingreso</dt>
@@ -163,23 +173,25 @@ function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => vo
         <dd>{groupDigits(receipt.minutosCompletos)}</dd>
         <dt>Tarifa por minuto</dt>
         <dd>{formatPesos(receipt.valorMinuto)}</dd>
-        <dt>Subtotal</dt>
-        <dd>{formatPesos(receipt.subtotal)}</dd>
+        <dt className="receipt-subtotal">Subtotal</dt>
+        <dd className="receipt-subtotal">{formatPesos(receipt.subtotal)}</dd>
         <dt>Ajuste por redondeo</dt>
         <dd>
           {receipt.ajusteRedondeo > 0
             ? `−${formatPesos(receipt.ajusteRedondeo)}`
             : formatPesos(receipt.ajusteRedondeo)}
         </dd>
-        <dt>Total (IVA incluido)</dt>
-        <dd>{formatPesos(receipt.total)}</dd>
+        <dt className="receipt-total">Total (IVA incluido)</dt>
+        <dd className="receipt-total">{formatPesos(receipt.total)}</dd>
       </dl>
-      <button type="button" onClick={() => window.print()}>
-        Imprimir
-      </button>
-      <button type="button" onClick={onClose}>
-        Cerrar
-      </button>
+      <div className="actions">
+        <button type="button" className="button-primary" onClick={() => window.print()}>
+          Imprimir
+        </button>
+        <button type="button" className="button-secondary" onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
     </section>
   );
 }

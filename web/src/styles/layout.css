@@ -1,0 +1,105 @@
+/* The bar on top, the page and its cards (Image 2 of the article). */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  min-height: 3.75rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+/* The mark is a small plate. */
+.brand-mark {
+  padding: 0.05rem 0.3rem;
+  border: 2px solid #ffffff;
+  border-radius: 4px;
+  background: var(--plate);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  letter-spacing: 0.05em;
+}
+
+.topbar-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.topbar-session p {
+  margin: 0;
+  color: #d9d9d9;
+  font-size: 0.9375rem;
+}
+
+.page {
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2.5rem;
+}
+
+.page-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 3rem;
+}
+
+.card {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+/* The entry form and the vehicles inside: side by side on a wide screen, one
+   under the other on a phone. */
+.operation {
+  display: grid;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Without this, the table would widen its card past the screen of a phone
+   instead of scrolling inside it. */
+.operation > * {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .operation {
+    grid-template-columns: minmax(15rem, 17.5rem) minmax(0, 1fr);
+  }
+}
+
+.sign-in {
+  width: 100%;
+  max-width: 24rem;
+}
+
+/* The exit and the receipt take the place of the form and the list. */
+.exit {
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+@media (max-width: 30rem) {
+  .page {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .card {
+    padding: 1.25rem 1rem;
+  }
+}

@@ -1,0 +1,107 @@
+/* The receipt (Image 3b): each term with its value on the right, a dashed
+   line before the subtotal and a solid one before the total. */
+.receipt {
+  max-width: 24rem;
+}
+
+.receipt-brand {
+  margin: 0 0 0.15rem;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.receipt h2 {
+  margin-bottom: 1.5rem;
+}
+
+/* No space between the columns, so the lines cross the whole receipt; each
+   term and its value start at the top of their row, so both halves of a line
+   meet. */
+.receipt-data {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 0.7rem;
+  margin: 0 0 1.5rem;
+}
+
+.receipt-data dt,
+.receipt-data dd {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.receipt-data dt {
+  padding-right: 1rem;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+}
+
+.receipt-data dd {
+  justify-content: flex-end;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.receipt-data .receipt-subtotal {
+  margin-top: 0.2rem;
+  padding-top: 0.85rem;
+  border-top: 1.5px dashed #8c8c8c;
+}
+
+.receipt-data .receipt-total {
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+  border-top: 2px solid var(--ink);
+}
+
+.receipt-data dt.receipt-total {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.receipt-data dd.receipt-total {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* FR-14: printed, the receipt goes alone on the page, without its buttons.
+   Only when there is a receipt, so printing the list does not give a blank page. */
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  body:has(.receipt) .topbar,
+  main:has(.receipt) > :not(.receipt),
+  .receipt .actions {
+    display: none;
+  }
+
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .receipt {
+    margin: 0;
+  }
+
+  .receipt-data {
+    margin-bottom: 0;
+  }
+
+  /* Browsers leave out backgrounds when printing; the plate keeps its yellow. */
+  .plate {
+    print-color-adjust: exact;
+  }
+}
+
+@page {
+  margin: 1.5cm;
+}
