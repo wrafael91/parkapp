@@ -1,10 +1,12 @@
-# ParkApp
+# RoloPark
 
 [![CI](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wrafael91/parkapp/actions/workflows/ci.yml)
 
-Parking management system for small and medium off-street parking lots in Bogotá, Colombia. It records vehicle entries and exits, calculates the per-minute fee under the city's current regulation (Decreto 652 de 2025, as amended by Decreto 026 de 2026), and keeps an audit trail of every operation.
+RoloPark is a parking management system for small and medium off-street parking lots in Bogotá, Colombia. It records vehicle entries and exits, calculates the per-minute fee under the city's current regulation (Decreto 652 de 2025, as amended by Decreto 026 de 2026), and keeps an audit trail of every operation.
 
-Undergraduate thesis project, Software Engineering, Politécnico Grancolombiano (2026).
+Undergraduate thesis project, Software Engineering, Politécnico Grancolombiano (2026). Live at https://rolopark.com.
+
+RoloPark is the visible name. Internal identifiers (the repository, packages, AWS resources, database roles, parameters and service) keep the name `parkapp` ([ADR 0010](docs/adr/0010-nombre-visible-rolopark.md)).
 
 **Stack:** Node.js, Express, Prisma, PostgreSQL, React (Vite), Nginx, AWS (EC2, RDS, Systems Manager).
 
@@ -14,6 +16,7 @@ Undergraduate thesis project, Software Engineering, Politécnico Grancolombiano 
 - [Requirements](docs/requisitos.md)
 - [Data model](docs/modelo-datos.md)
 - [Architecture](docs/arquitectura.md) and [decision records](docs/adr/)
+- [Threat model](docs/modelo-amenazas.md)
 
 ## Run the API locally
 

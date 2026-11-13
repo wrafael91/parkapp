@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5) |
-| Versión | 1.1 — 20 de octubre de 2026 |
+| Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
+| Tarea | S1-04 (#5), S2-23 (#71) |
+| Versión | 1.2 — 12 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -297,8 +297,8 @@ fallido, porque un usuario puede escribir por error su contraseña en ese campo
 | SALIDA_REGISTRADA | EXIT_REGISTERED | Salida de un vehículo y emisión de su comprobante, en la misma transacción (RI-11). | FR-12, FR-13, FR-14, FR-19 | estadia | — | Operador o administrador |
 | ESTADIA_ANULADA | STAY_VOIDED | Anulación de una estadía y, si lo tiene, de su comprobante. | BR-12, FR-15, FR-19 | estadia | — (el motivo queda en la estadía) | Administrador |
 | `ESTADIA_CORREGIDA` | `STAY_CORRECTED` | Corrección por reemplazo: anulación de la estadía equivocada y creación de su reemplazo, en la misma transacción. | BR-17, FR-19, FR-21, FR-22 | estadia (el reemplazo) | en una corrección de salida, el id de la estadía que se cerró con la hora de esa salida | Administrador |
-| TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador |
-| PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador |
+| TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
+| PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
 | CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
 | CUENTA_DESACTIVADA | ACCOUNT_DEACTIVATED | Desactivación de una cuenta; revoca sus sesiones. | FR-04, FR-19, NFR-04 | usuario | — | Administrador |
 | CUENTA_REACTIVADA | ACCOUNT_REACTIVATED | Reactivación de una cuenta. | FR-04, FR-19 | usuario | — | Administrador |
@@ -471,3 +471,4 @@ mediciones y no por suposición.
 |---|---|---|
 | 1.0 | 13 de octubre de 2026 | Modelo conceptual, lógico y físico; RI-01 a RI-18; diccionario de datos, catálogo de auditoría, tipos enumerados e índices. |
 | 1.1 | 20 de octubre de 2026 | Corrección por reemplazo (BR-17): columna `reemplaza_a_id`, relación de la estadía consigo misma en ambos diagramas, RI-19 y acción `ESTADIA_CORREGIDA` (15 acciones). La columna de la tabla de entidades pasa a llamarse Origen. |
+| 1.2 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Catálogo de acciones de auditoría (4.1): `TARIFA_CAMBIADA` y `PERIODO_GRACIA_CAMBIADO` también los dispara el sistema (script de arranque), como `CUENTA_CREADA`. (#71) |

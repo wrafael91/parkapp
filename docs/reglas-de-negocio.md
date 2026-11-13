@@ -2,14 +2,14 @@
 
 | Campo | Valor |
 |---|---|
-| Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5) |
-| Versión | 1.7 — 22 de octubre de 2026 |
+| Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71) |
+| Versión | 1.8 — 12 de noviembre de 2026 |
 
 ## 1. Propósito
 
 Este documento define las reglas que rigen el registro de vehículos y el cobro
-del servicio de parqueo en ParkApp. Cada regla tiene un identificador único
+del servicio de parqueo en RoloPark. Cada regla tiene un identificador único
 (BR-XX) para que los requisitos, el código y las pruebas puedan referenciarla.
 
 ## 2. Actores
@@ -93,7 +93,7 @@ BR-17 responde a los errores de digitación: corregir una placa, un tipo de veh�
 ## 5. Ejemplos de cálculo
 
 Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
-5 minutos. Estos ejemplos se convierten en casos de prueba del cálculo de cobro (S1-08).
+5 minutos. Estos ejemplos se convierten en casos de prueba del cálculo de cobro (S2-09).
 
 | Caso | Estadía | Minutos completos | Subtotal | Total | Reglas |
 |---|---|---|---|---|---|
@@ -122,11 +122,11 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
 | Bicicletas | No tienen placa, que es el identificador del registro. |
 | Tope diario | Es legal y favorece al usuario, pero se pospone para priorizar un incremento funcional. Queda en el backlog del producto. |
 | Mensualidades y convenios | No hacen parte del alcance del trabajo de grado. |
-| Factura electrónica (DIAN) y desglose de IVA | ParkApp emite un comprobante de pago, no una factura electrónica. |
+| Factura electrónica (DIAN) y desglose de IVA | RoloPark emite un comprobante de pago, no una factura electrónica. |
 | Reporte al Registro Distrital de Estacionamientos | Obligación administrativa del operador. |
 | Publicación física de tarifas en el establecimiento | Obligación del operador (Decreto 652/2025, art. 200, par. 5). |
 | Placas extranjeras y diplomáticas | El registro valida el formato de placa colombiana (FR-08). |
-| Registro del medio de pago (efectivo o tarjeta) | ParkApp calcula y registra el valor a cobrar, pero no procesa pagos: el pago se recibe fuera del sistema. El resumen de recaudo (FR-20) totaliza por operador sin distinguir el medio de pago. Queda en el backlog del producto. |
+| Registro del medio de pago (efectivo o tarjeta) | RoloPark calcula y registra el valor a cobrar, pero no procesa pagos: el pago se recibe fuera del sistema. El resumen de recaudo (FR-20) totaliza por operador sin distinguir el medio de pago. Queda en el backlog del producto. |
 | Recuperación de contraseña por correo | Requiere un servicio de correo y amplía la superficie de ataque. El administrador restablece las contraseñas (FR-05). |
 
 ## 8. Glosario
@@ -199,3 +199,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.5 | 20 de octubre de 2026 | BR-17: corrección de estadías por reemplazo, con las horas registradas por el servidor. BR-16 aclara que una corrección solo copia horas ya registradas. Glosario: corregir y reemplazo. |
 | 1.6 | 22 de octubre de 2026 | FSC se define con su nombre oficial (factor por la estrategia de sellos de calidad de cicloparqueaderos). Glosario: corrección y reemplazo con el mismo formato de las demás filas. |
 | 1.7 | 22 de octubre de 2026 | Actores: el administrador ya no figura como quien configura los topes legales, que contradecía BR-15; se agrega que corrige registros (BR-17). |
+| 1.8 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Los ejemplos de la sección 5 citan la tarea que los convirtió en pruebas, S2-09 (antes S1-08). (#71) |

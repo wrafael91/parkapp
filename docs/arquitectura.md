@@ -2,11 +2,11 @@
 
 | Campo | Valor |
 |---|---|
-| Proyecto | ParkApp — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64) |
-| Versión | 1.5 — 2 de noviembre de 2026 |
+| Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71) |
+| Versión | 1.6 — 12 de noviembre de 2026 |
 
-Este documento describe la arquitectura de ParkApp con el modelo C4 (contexto,
+Este documento describe la arquitectura de RoloPark con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
 importantes se registran como ADR (registros de decisiones de arquitectura) en
 `docs/adr/`.
@@ -26,9 +26,13 @@ importantes se registran como ADR (registros de decisiones de arquitectura) en
 
 ## 2. Estilo arquitectónico
 
-ParkApp es un sistema cliente-servidor de tres niveles: una aplicación web de
+RoloPark es un sistema cliente-servidor de tres niveles: una aplicación web de
 una sola página (SPA) en React, que corre en el navegador; una API REST en
 Node.js con Express y Prisma; y una base de datos PostgreSQL.
+
+RoloPark es el nombre visible del producto. Los identificadores internos
+(repositorio, paquetes, recursos de AWS, roles de la base de datos, parámetros
+y servicio) siguen como `parkapp` (ADR 0010).
 
 - La API es un **monolito modular por capas** (ADR 0001).
 - La aplicación web y la API se sirven desde el **mismo origen** (ADR 0002).
@@ -42,7 +46,7 @@ flowchart TB
     admin["<b>Administrador</b><br/>[Persona]<br/>Configura tarifas, gestiona cuentas,<br/>anula registros y consulta la bitácora"]
     cliente["<b>Cliente</b><br/>[Persona]<br/>Conductor del vehículo"]
     mantenedor["<b>Mantenedor de la plataforma</b><br/>[Persona]<br/>Actualiza el tope legal (BR-15)"]
-    parkapp["<b>ParkApp</b><br/>[Sistema]<br/>Registro de vehículos y cobro del parqueo"]
+    parkapp["<b>RoloPark</b><br/>[Sistema]<br/>Registro de vehículos y cobro del parqueo"]
     github["<b>GitHub</b><br/>[Sistema externo]<br/>Código, migraciones e integración continua"]
 
     operador -- "Usa, por HTTPS" --> parkapp
@@ -69,7 +73,7 @@ en el repositorio (BR-15).
 flowchart TB
     usuario["<b>Operador o Administrador</b><br/>[Persona]"]
 
-    subgraph parkapp["ParkApp"]
+    subgraph parkapp["RoloPark"]
         proxy["<b>Proxy inverso</b><br/>[Nginx]<br/>Termina TLS, sirve la aplicación web<br/>y reenvía /api a la API"]
         spa["<b>Aplicación web</b><br/>[React, SPA en el navegador]<br/>Formularios y consultas,<br/>sin reglas de negocio"]
         api["<b>API REST</b><br/>[Node.js, Express, Prisma]<br/>Reglas de negocio, cálculo del cobro,<br/>sesiones, roles, validación y auditoría"]
@@ -417,6 +421,11 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | [0007](adr/0007-acceso-y-despliegue-sin-ssh.md) | Administración y despliegue sin SSH ni llaves de larga duración |
 | [0008](adr/0008-contrato-de-la-api.md) | Contrato de la API en español y código en inglés |
 | [0009](adr/0009-respaldos-con-aws-backup.md) | Respaldos diarios con AWS Backup por el límite del plan gratuito |
+| [0010](adr/0010-nombre-visible-rolopark.md) | RoloPark como nombre visible y `parkapp` como identificador interno |
+
+El [modelo de amenazas](modelo-amenazas.md) (S2-13) relaciona cada amenaza con
+su control y su estado. Es la referencia vigente donde un ADR remite al modelo
+de amenazas de S1-07 (ADR 0003).
 
 ## Historial de cambios
 
@@ -429,3 +438,4 @@ Estimación hecha en la [calculadora de precios de AWS](https://calculator.aws/#
 | 1.3 | 30 de octubre de 2026 | Estructura de `backend/src` (5.5, #34). Roles y matriz de permisos de la base de datos (6.5, #59). Ajustes de la implementación en AWS (#43): nombres de los grupos de seguridad, Deny explícito en el rol del servidor, etiqueta `Proyecto=parkapp`, bucket solo con HTTPS, `environment:` excluido del despliegue y reencendido de RDS a los 7 días. |
 | 1.4 | 2 de noviembre de 2026 | ADR 0008: contrato de la API en español y código en inglés (#60). |
 | 1.5 | 2 de noviembre de 2026 | ADR 0009: respaldos diarios con AWS Backup, porque el plan gratuito limita la retención de RDS a 1 día (6.1, 6.2, 6.4, 6.6, 6.7 y 6.8). `sub` de OIDC con los ID inmutables del repositorio (6.6 y ADR 0007). Correcciones: Nginx reemplaza `X-Forwarded-For` (6.3) y costo del dominio `rolopark.com` (6.8). (#64) |
+| 1.6 | 12 de noviembre de 2026 | ADR 0010: RoloPark es el nombre visible del producto y los identificadores internos siguen como `parkapp` (secciones 2 a 4). Enlace al modelo de amenazas en la sección 7. (#71) |
