@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
+import Rates from "./Rates.tsx";
 import Stays from "./Stays.tsx";
 
 // GET, POST and DELETE /api/sesion (ADR 0008), with a relative URL and the
@@ -7,8 +8,8 @@ import Stays from "./Stays.tsx";
 // credentials: "include" (ADR 0002; docs/modelo-amenazas.md, 7.3).
 const SESSION_URL = "/api/sesion";
 
-// The part of the API's usuario that the page shows (ADR 0008).
-type Usuario = { nombre: string };
+// The part of the API's usuario that the page uses (ADR 0008).
+type Usuario = { nombre: string; rol: "ADMINISTRADOR" | "OPERADOR" };
 
 type Session =
   | { status: "checking" }
@@ -57,17 +58,21 @@ export default function App() {
   );
 }
 
-// The bar on top of every screen: the name of the product and, when there is a
-// session, who signed in and the button to sign out.
-function TopBar({ children }: { children?: ReactNode }) {
+// The bar on top of every screen: the name of the product, the sections an
+// administrator can open and, when there is a session, who signed in and the
+// button to sign out.
+function TopBar({ nav, children }: { nav?: ReactNode; children?: ReactNode }) {
   return (
     <header className="topbar">
-      <h1 className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          RP
-        </span>
-        RoloPark
-      </h1>
+      <div className="topbar-start">
+        <h1 className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            RP
+          </span>
+          RoloPark
+        </h1>
+        {nav}
+      </div>
       {children && <div className="topbar-session">{children}</div>}
     </header>
   );
@@ -121,8 +126,11 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   );
 }
 
+type Section = "operation" | "rates";
+
 function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => void }) {
   const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>("operation");
 
   async function handleSignOut() {
     // null when the server cannot be reached.
@@ -137,7 +145,22 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
 
   return (
     <>
-      <TopBar>
+      <TopBar
+        nav={
+          // Matrix 1.2: only an administrator configures the rates, so an
+          // operator sees no sections. The API checks the role anyway (NFR-05).
+          user.rol === "ADMINISTRADOR" && (
+            <nav className="topbar-nav" aria-label="Secciones">
+              <SectionButton current={section} section="operation" onSelect={setSection}>
+                Operación
+              </SectionButton>
+              <SectionButton current={section} section="rates" onSelect={setSection}>
+                Tarifas
+              </SectionButton>
+            </nav>
+          )
+        }
+      >
         <p>Sesión iniciada: {user.nombre}</p>
         <button type="button" className="button-on-dark" onClick={handleSignOut}>
           Cerrar sesión
@@ -149,8 +172,34 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
             {error}
           </p>
         )}
-        <Stays onSessionEnded={onSignedOut} />
+        {section === "rates" ? (
+          <Rates onSessionEnded={onSignedOut} />
+        ) : (
+          <Stays onSessionEnded={onSignedOut} />
+        )}
       </main>
     </>
+  );
+}
+
+function SectionButton({
+  current,
+  section,
+  onSelect,
+  children,
+}: {
+  current: Section;
+  section: Section;
+  onSelect: (section: Section) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-current={current === section ? "page" : undefined}
+      onClick={() => onSelect(section)}
+    >
+      {children}
+    </button>
   );
 }
