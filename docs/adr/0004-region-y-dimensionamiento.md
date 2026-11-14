@@ -25,3 +25,9 @@ El sistema se despliega en us-east-1 (Norte de Virginia), con una instancia EC2 
 - Las instancias t4g acumulan créditos de CPU mientras están en reposo y los gastan en los picos. Por defecto quedan en modo ilimitado: si la CPU se mantiene alta mucho tiempo, por ejemplo en la prueba de carga de NFR-13, AWS cobra el excedente. Se revisa en el Sprint 3.
 - La disponibilidad queda justa en el mínimo garantizado (sección 6.7).
 - Escalar significa cambiar el tipo de instancia, con unos minutos de interrupción.
+
+## Actualización del 14 de noviembre de 2026
+
+Al crear el servidor (S2-04, 31 de octubre), sus créditos de CPU se dejaron en modo **Estándar** y no en el ilimitado que traen por defecto las instancias t4g. Así, si la CPU se mantiene alta, la instancia se ralentiza en lugar de generar un cobro adicional. Lo que la consecuencia anterior dejaba para revisar en el Sprint 3 queda resuelto para el costo, pero cambia la prueba de carga de NFR-13: si agota los créditos, mide el rendimiento base de la instancia, y eso se tiene en cuenta al interpretar sus resultados.
+
+La decisión no cambia. El resto del endurecimiento del servidor está en `docs/arquitectura.md`, sección 6.2.
