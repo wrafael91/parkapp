@@ -337,3 +337,125 @@ describe("version constraints", () => {
     ).rejects.toThrow(/periodo_gracia_minutos_no_negativos/);
   });
 });
+
+interface ReceiptValues {
+  fullMinutes: number;
+  subtotal: number;
+  roundingAdjustment: number;
+  total: number;
+}
+
+async function insertReceipt(tx: Tx, f: Fixture, values: ReceiptValues): Promise<void> {
+  const stayId = await insertStay(tx, f, CLOSED);
+  await tx.$executeRawUnsafe(
+    `INSERT INTO comprobante (estadia_id, minutos_completos, subtotal, ajuste_redondeo, total)
+     VALUES ($1, $2, $3, $4, $5)`,
+    stayId,
+    values.fullMinutes,
+    values.subtotal,
+    values.roundingAdjustment,
+    values.total,
+  );
+}
+
+async function insertAuditEvent(
+  tx: Tx,
+  f: Fixture,
+  values: { withUser: boolean; ip: string | null; entity: string | null; entityId: number | null },
+): Promise<void> {
+  await tx.$executeRawUnsafe(
+    `INSERT INTO evento_auditoria (accion, usuario_id, entidad, entidad_id, ip)
+     VALUES ('INGRESO_REGISTRADO', $1, $2, $3, $4)`,
+    values.withUser ? f.userId : null,
+    values.entity,
+    values.entityId,
+    values.ip,
+  );
+}
+
+describe("receipt, audit and account constraints", () => {
+  it("accepts a charged receipt and a receipt of $0 within the grace period", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await insertReceipt(tx, f, {
+          fullMinutes: 37,
+          subtotal: 8510,
+          roundingAdjustment: 10,
+          total: 8500,
+        });
+        await insertReceipt(tx, f, {
+          fullMinutes: 3,
+          subtotal: 0,
+          roundingAdjustment: 0,
+          total: 0,
+        });
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a receipt whose amounts do not add up (RI-12)", async () => {
+    for (const values of [
+      { fullMinutes: 37, subtotal: 8510, roundingAdjustment: 10, total: 8550 },
+      { fullMinutes: 37, subtotal: 8510, roundingAdjustment: 60, total: 8450 },
+      { fullMinutes: 6, subtotal: 1400, roundingAdjustment: 50, total: 1350 },
+      { fullMinutes: 37, subtotal: 8510, roundingAdjustment: 0, total: 8510 },
+      { fullMinutes: 6, subtotal: 1380, roundingAdjustment: -20, total: 1400 },
+      { fullMinutes: -1, subtotal: 0, roundingAdjustment: 0, total: 0 },
+      { fullMinutes: 1, subtotal: -50, roundingAdjustment: 0, total: -50 },
+    ]) {
+      await expect(scenario((tx, f) => insertReceipt(tx, f, values))).rejects.toThrow(
+        /comprobante_valores_validos/,
+      );
+    }
+  });
+
+  it("accepts audit events with and without a user, entity and IP", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await insertAuditEvent(tx, f, {
+          withUser: true,
+          ip: "203.0.113.7",
+          entity: "estadia",
+          entityId: 1,
+        });
+        await insertAuditEvent(tx, f, { withUser: false, ip: null, entity: null, entityId: null });
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects an audit entity without its id, or an id without its entity (RI-17)", async () => {
+    for (const [entity, entityId] of [
+      ["estadia", null],
+      [null, 1],
+    ] as const) {
+      await expect(
+        scenario((tx, f) =>
+          insertAuditEvent(tx, f, { withUser: false, ip: null, entity, entityId }),
+        ),
+      ).rejects.toThrow(/evento_auditoria_entidad_completa/);
+    }
+  });
+
+  it("rejects an audit event with a user and no IP (RI-18)", async () => {
+    await expect(
+      scenario((tx, f) =>
+        insertAuditEvent(tx, f, { withUser: true, ip: null, entity: null, entityId: null }),
+      ),
+    ).rejects.toThrow(/evento_auditoria_ip_con_usuario/);
+  });
+
+  it("rejects an email that differs from another only in case (RI-15)", async () => {
+    await expect(
+      scenario(async (tx) => {
+        const email = `caso-${randomUUID()}@prueba.local`;
+        for (const value of [email, email.toUpperCase()]) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO usuario (nombre, correo, hash_contrasena, rol)
+             VALUES ('Caso', $1, 'x', 'OPERADOR')`,
+            value,
+          );
+        }
+      }),
+    ).rejects.toThrow(/usuario_correo_sin_mayusculas_unico/);
+  });
+});
