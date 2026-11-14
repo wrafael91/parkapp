@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71) |
-| Versión | 1.6 — 12 de noviembre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71), S3-02 (#69) |
+| Versión | 1.7 — 14 de noviembre de 2026 |
 
 Este documento describe la arquitectura de RoloPark con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -295,14 +295,14 @@ Desde internet solo se llega al puerto 443 del servidor. La base de datos no tie
 |---|---|---|
 | Región | us-east-1 (Norte de Virginia). | NFR-23 · ADR 0004 |
 | Red (VPC) | `10.0.0.0/16`. Una subred pública (`10.0.1.0/24`, us-east-1a) con salida a internet. Dos subredes privadas sin ruta a internet: `10.0.11.0/24` en us-east-1a y `10.0.12.0/24` en us-east-1b. RDS exige subredes en dos zonas aunque la base de datos use una sola. Sin NAT Gateway. | NFR-09, NFR-23 |
-| Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Lleva la etiqueta `Proyecto=parkapp`, que el rol de GitHub Actions exige para enviarle comandos (sección 6.4). Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. | NFR-09, NFR-17 · ADR 0002, 0004 |
-| Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos de RDS con 1 día de retención, el máximo del plan gratuito, que dan la recuperación a un punto en el tiempo; los 7 días los cubre AWS Backup (fila siguiente). Protección contra borrado. Ventana de respaldo de RDS de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). | NFR-09, NFR-18 · ADR 0004, 0009 |
+| Servidor | EC2 `t4g.micro` (2 vCPU, 1 GB) con Amazon Linux 2023. Disco gp3 de 8 GB cifrado, 1 GB de memoria de intercambio, metadatos solo con IMDSv2 e IP elástica. Lleva la etiqueta `Proyecto=parkapp`, que el rol de GitHub Actions exige para enviarle comandos (sección 6.4). Nginx termina TLS, sirve la aplicación web y reenvía `/api` a la API, que escucha solo en `127.0.0.1:3000`. La API es un servicio de systemd que corre con un usuario sin privilegios y `Restart=always`. Endurecimiento adicional: metadatos con un límite de un salto, créditos de CPU en modo Estándar (no ilimitado), protección contra terminación (pero no contra detención, para que AWS Budgets pueda detenerla) y sin par de llaves. La unidad de systemd agrega `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=full` y `ProtectHome`, y el usuario de la API puede leer su código pero no modificarlo. | NFR-09, NFR-17 · ADR 0002, 0004 |
+| Base de datos | RDS PostgreSQL 16, `db.t4g.micro`, en una sola zona (us-east-1a, la misma del servidor). 20 GB gp3 cifrados con KMS. Sin acceso público y con TLS obligatorio (`rds.force_ssl = 1`). Respaldos automáticos de RDS con 1 día de retención, el máximo del plan gratuito, que dan la recuperación a un punto en el tiempo; los 7 días los cubre AWS Backup (fila siguiente). Protección contra borrado. Ventana de respaldo de RDS de 2:00 a 2:30 a. m. y mantenimiento los domingos de 3:00 a 3:30 a. m., hora de Bogotá (UTC−5). Las conexiones verifican el certificado del servidor: la de la API, con el paquete global de certificados de RDS; la de las migraciones, con un archivo que solo tiene la raíz de us-east-1, porque el motor de migraciones de Prisma solo confía en el primer certificado del archivo. **La zona horaria de la base debe seguir en UTC:** con el adaptador de PostgreSQL de Prisma, otra zona guarda y lee las fechas corridas (hallazgo de S2-10). | NFR-09, NFR-18 · ADR 0004, 0009 |
 | Respaldos | AWS Backup, plan `parkapp-diario`: una instantánea de la base de datos cada día a las 4:30 a. m., hora de Bogotá, que se borra sola a los 7 días, en la bóveda `parkapp-respaldos`. Con los respaldos de RDS, se puede restaurar cualquiera de los últimos 7 días y cualquier segundo de las últimas 24 horas. | NFR-18 · ADR 0009 |
-| Secretos | Parameter Store, con parámetros `SecureString` bajo `/parkapp/prod/`. | NFR-10 · ADR 0006 |
+| Secretos | Parameter Store, con parámetros `SecureString` bajo `/parkapp/prod/`. La API lee su conexión al arrancar y la guarda solo en la memoria del proceso. La contraseña del usuario maestro está bajo `/parkapp/admin/`, fuera del alcance del servidor. | NFR-10 · ADR 0006 |
 | Artefactos | Bucket S3 privado, con bloqueo de acceso público, cifrado SSE-S3 y una política que rechaza las peticiones sin TLS. Los artefactos se borran a los 30 días. | NFR-09 · ADR 0007 |
-| Dominio y DNS | Dominio en Cloudflare Registrar. Un registro A apunta a la IP elástica, sin el proxy de Cloudflare. | ADR 0005 |
-| Certificado TLS | Let's Encrypt con certbot y renovación automática. Solo TLS 1.2 y 1.3, con HSTS. | NFR-09 · ADR 0005 |
-| Presupuesto | AWS Budgets: 30 USD al mes, **sin incluir créditos**, porque con créditos el costo neto siempre da 0 y la alerta nunca se activaría. Alerta por correo al 80 % y, al 100 %, una acción automática que detiene EC2 y RDS. La acción frena el gasto, pero no lo detiene de forma permanente: RDS vuelve a encender sola una base de datos detenida a los 7 días (sección 6.8). | NFR-23 |
+| Dominio y DNS | `rolopark.com` en Cloudflare Registrar. Un registro A apunta a la IP elástica y un CNAME `www` al dominio, los dos sin el proxy de Cloudflare. Un registro CAA solo autoriza a Let's Encrypt a emitir certificados; para que Cloudflare no agregue otras autoridades, su Universal SSL está desactivado. DNSSEC activo. | ADR 0005, 0010 |
+| Certificado TLS | Let's Encrypt con certbot, ECDSA, para `rolopark.com` y `www.rolopark.com`. Se renueva con el temporizador `certbot-renew.timer`, y un hook (`infra/certbot/reload-nginx.sh`) recarga Nginx después de cada renovación. Let's Encrypt ya no avisa por correo antes del vencimiento. Configuración de TLS en la sección 6.3. | NFR-09 · ADR 0005 |
+| Presupuesto | AWS Budgets: 30 USD al mes, **sin incluir créditos**, porque con créditos el costo neto siempre da 0 y la alerta nunca se activaría. Alerta por correo al 80 % y, al 100 %, dos acciones automáticas, una que detiene EC2 y otra que detiene RDS, sin pedir aprobación (sección 6.4). La acción frena el gasto, pero no lo detiene de forma permanente: RDS vuelve a encender sola una base de datos detenida a los 7 días (sección 6.8). | NFR-23 |
 | Registro de actividad | Historial de eventos de CloudTrail: 90 días, sin costo. | — |
 
 ### 6.3 Reglas de red
@@ -318,6 +318,16 @@ El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan p
 
 **IP real del cliente.** Nginx reemplaza `X-Forwarded-For` por la IP de la conexión (`$remote_addr`), en lugar de agregarla a lo que envíe el cliente, y Express solo confía en el proxy local (`trust proxy = loopback`). Así un cliente no puede falsificar su IP para evadir el límite de peticiones (NFR-08) ni para alterar lo que se registra en la bitácora (NFR-12).
 
+**Nginx.** La configuración está en `infra/nginx/` (`nginx.conf` y `rolopark.conf`) y se aplica a mano en el servidor; el despliegue automático no la toca.
+
+- Una petición por IP o con un nombre que no sea `rolopark.com` o `www.rolopark.com` se rechaza: en el puerto 80 se cierra sin respuesta, y en el 443 se rechaza el saludo TLS. `www` y HTTP redirigen a `https://rolopark.com`.
+- TLS 1.2 y 1.3, con las suites ECDSA de la configuración «intermedia» de Mozilla, sin tickets de sesión ni OCSP stapling. El intercambio de llaves prefiere `X25519MLKEM768`, poscuántico, que protege el tráfico grabado hoy contra un descifrado futuro.
+- HSTS de dos años con `includeSubDomains` y sin `preload`. `server_tokens off` y cuerpos de petición de máximo 64 kB.
+- En todas las respuestas: `Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'`, `X-Content-Type-Options: nosniff` y `Referrer-Policy: same-origin`. Se usa `same-origin` y no `no-referrer` porque con `no-referrer` el navegador envía `Origin: null` en las peticiones del mismo origen, y la API verifica `Origin` contra CSRF (ADR 0003).
+- Ningún `location` usa `add_header`, porque en Nginx eso corta la herencia de los encabezados del `server`. La caché se configura con `expires`: `/assets/` se guarda un año (los nombres llevan un hash), e `index.html` se revalida en cada carga.
+
+El [modelo de amenazas](modelo-amenazas.md) relaciona cada uno de estos controles con la amenaza que mitiga.
+
 ### 6.4 Identidades y permisos
 
 | Identidad | Puede | Restricción |
@@ -326,7 +336,7 @@ El DNS de la VPC, el servicio de hora y los metadatos de la instancia no pasan p
 | Administrador (persona) | Administrar la cuenta en el trabajo diario. | MFA obligatorio. Es distinto del usuario raíz. |
 | Rol del servidor EC2 | Conectarse a Systems Manager (`AmazonSSMManagedInstanceCore`), leer los parámetros de `/parkapp/prod/` y descargar del bucket de artefactos. | No puede modificar otros recursos de AWS. `AmazonSSMManagedInstanceCore` permite leer cualquier parámetro de la cuenta, así que la política propia del rol agrega un Deny explícito sobre todo parámetro fuera de `/parkapp/prod/`; en IAM, un Deny explícito siempre prevalece. |
 | Rol de GitHub Actions | Subir al bucket de artefactos y ejecutar el documento `ParkApp-Deploy` en el servidor. | Solo lo puede asumir el repositorio `wrafael91/parkapp` desde la rama `main`, y con credenciales temporales (OIDC). Solo ejecuta `ParkApp-Deploy`, y solo en instancias con la etiqueta `Proyecto=parkapp`. |
-| Rol de AWS Budgets | Detener la instancia EC2 y la base de datos. | Solo sobre esos dos recursos. |
+| Rol de AWS Budgets | Detener la instancia EC2 y la base de datos. | Solo lo asume AWS Budgets, y solo para presupuestos de esta cuenta. Usa una política propia, no la administrada de AWS, que permite iniciar y detener cualquier instancia: solo puede detener esos dos recursos, solo a través de Systems Manager y solo con los documentos `AWS-StopEC2Instance` y `AWS-StopRdsInstance`. No puede iniciar, modificar ni borrar nada: volver a encenderlos es manual. Se probó de punta a punta con un presupuesto temporal. |
 | Rol de AWS Backup | Crear las instantáneas de la base de datos según el plan diario y borrarlas al vencer. | Solo lo asume AWS Backup. Usa la política administrada de AWS Backup con un Deny explícito sobre `rds:ModifyDBInstance` y `rds:ModifyDBCluster`, porque esa política permite modificar cualquier base de datos de la cuenta (ADR 0009). |
 
 ### 6.5 Usuarios de la base de datos
@@ -360,6 +370,10 @@ Permisos de `parkapp_app` (migración `grant_app_privileges`):
 | `evento_auditoria` | Sí | Sí | No | NFR-12 |
 | `_prisma_migrations` | No | No | No | Tabla de control de Prisma |
 
+En RDS, el usuario maestro recibió el rol `parkapp_migrator` (`GRANT parkapp_migrator TO <maestro>`), que PostgreSQL 16 exige para que el maestro pueda asignarle la base de datos. La base no concede permisos a PUBLIC: solo `parkapp_migrator` puede conectarse, crear y usar tablas temporales, y `parkapp_app` solo puede conectarse.
+
+Los datos iniciales (la primera cuenta de administrador, la tarifa y el periodo de gracia de un ambiente nuevo) se cargan con los scripts de arranque de `backend/src/scripts/`, que corren en el servidor por Session Manager y se conectan como `parkapp_app`, nunca como el maestro. La contraseña llega por la entrada estándar, de modo que no queda en el historial ni en la lista de procesos.
+
 Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus secuencias. Cada migración que cree una tabla incluye sus GRANT; no se usa ALTER DEFAULT PRIVILEGES. Una prueba falla si alguna tabla del esquema no concede SELECT a `parkapp_app`, o si `_prisma_migrations` le concede algún permiso.
 
 ### 6.6 Flujo de despliegue
@@ -369,6 +383,12 @@ Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus s
 3. Sube el artefacto a S3, identificado con el hash del commit.
 4. Con SSM Run Command, ejecuta en el servidor el documento `ParkApp-Deploy`. Este descarga el artefacto, aplica las migraciones con `parkapp_migrator`, activa la nueva versión y reinicia el servicio.
 5. Verifica que `GET /api/salud` responda. Si falla, el documento vuelve a la versión anterior, que se conserva en el servidor.
+
+Detalles del despliegue:
+
+- **Dos jobs.** «Test and package» corre en `ubuntu-24.04-arm` (la arquitectura del servidor), ejecuta las pruebas y los scripts de npm, y no puede pedir credenciales de AWS. «Upload and deploy» es el único con `id-token: write`: sube el artefacto y ejecuta `ParkApp-Deploy`. Los despliegues no se cancelan entre sí.
+- **Artefacto.** Un `.tar.gz` con `dist/`, `node_modules/` de producción ya instalado (el servidor no ejecuta `npm ci`), `package.json`, `package-lock.json`, `prisma/`, `prisma7.config.ts`, la aplicación web compilada en `web/` y un archivo `BUILD_INFO` con el commit y la ejecución. La lista es explícita: no entran `src/`, las pruebas ni ningún `.env`. El flujo calcula su SHA-256 y el documento lo verifica antes de extraerlo.
+- **Documento `ParkApp-Deploy`** (`infra/ssm/parkapp-deploy.yaml`). Sus parámetros solo aceptan un commit de 7 caracteres hexadecimales y un SHA-256 de 64 (`allowedPattern`), lo que impide inyectar comandos. Toma un candado para que dos despliegues no se crucen, aplica las migraciones como el usuario del sistema de la API con `JITI_FS_CACHE=false` (Prisma no deja archivos en `/tmp`) y conserva solo la versión nueva y la anterior. Si algo falla antes de activar la nueva versión, la que está en servicio no se toca.
 
 Las migraciones se diseñan compatibles con la versión anterior, para que volver atrás no obligue a deshacerlas. Antes de una migración que cambie tablas existentes, se toma un respaldo bajo demanda con AWS Backup, que vence a los 7 días (ADR 0009).
 
@@ -439,3 +459,4 @@ de amenazas de S1-07 (ADR 0003).
 | 1.4 | 2 de noviembre de 2026 | ADR 0008: contrato de la API en español y código en inglés (#60). |
 | 1.5 | 2 de noviembre de 2026 | ADR 0009: respaldos diarios con AWS Backup, porque el plan gratuito limita la retención de RDS a 1 día (6.1, 6.2, 6.4, 6.6, 6.7 y 6.8). `sub` de OIDC con los ID inmutables del repositorio (6.6 y ADR 0007). Correcciones: Nginx reemplaza `X-Forwarded-For` (6.3) y costo del dominio `rolopark.com` (6.8). (#64) |
 | 1.6 | 12 de noviembre de 2026 | ADR 0010: RoloPark es el nombre visible del producto y los identificadores internos siguen como `parkapp` (secciones 2 a 4). Enlace al modelo de amenazas en la sección 7. (#71) |
+| 1.7 | 14 de noviembre de 2026 | Detalles de la implementación de S2-04 a S2-08 y S2-10: endurecimiento del servidor y de systemd, certificados de las conexiones a la base, zona horaria UTC, contraseña del maestro, dominio, renovación del certificado y dos acciones de Budgets (6.2); configuración de Nginx (6.3); rol de Budgets (6.4); permisos de la base y scripts de arranque (6.5); jobs, artefacto y documento de despliegue (6.6). ADR 0004, 0005 y 0006 actualizados. S3-02 (#69) |
