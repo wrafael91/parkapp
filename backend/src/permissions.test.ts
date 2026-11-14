@@ -46,9 +46,13 @@ describe("parkapp_app privileges (NFR-12)", () => {
     ).rejects.toThrow(/permission denied/);
   });
 
+  // WHERE false checks the column privileges without touching existing stays, which
+  // the integrity constraints (S3-03) would reject.
   it("can update a stay's exit data but not its entry data (BR-17)", async () => {
-    await expect(runAsApp("UPDATE estadia SET estado = 'CERRADA'")).resolves.toBeUndefined();
-    await expect(runAsApp("UPDATE estadia SET placa = 'XXX000'")).rejects.toThrow(/permission denied/);
+    await expect(runAsApp("UPDATE estadia SET estado = 'CERRADA' WHERE false")).resolves.toBeUndefined();
+    await expect(runAsApp("UPDATE estadia SET placa = 'XXX000' WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
   });
 
   it("cannot create objects in the schema", async () => {

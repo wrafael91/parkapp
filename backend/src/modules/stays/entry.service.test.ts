@@ -4,6 +4,7 @@ import { createPrismaClient } from "../../db.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
+import { closeCurrentVersions } from "../../versions.test-helper.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -20,6 +21,7 @@ async function asApp(test: (db: Prisma.TransactionClient) => Promise<void>): Pro
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+        await closeCurrentVersions(tx);
         await test(tx);
         throw new Rollback();
       },
@@ -231,7 +233,14 @@ describe("registerEntry with a plate already inside (BR-03, FR-09)", () => {
         now: NOW,
       });
       if (!first.ok) throw new Error("entry not registered");
-      await db.stay.update({ where: { id: first.stayId }, data: { status: "CLOSED" } });
+      await db.stay.update({
+        where: { id: first.stayId },
+        data: {
+          status: "CLOSED",
+          exitTime: new Date("2026-11-09T15:00:00.000Z"),
+          exitById: setup.userId,
+        },
+      });
 
       const result = await registerEntry(db, {
         plate: "ABC123",
