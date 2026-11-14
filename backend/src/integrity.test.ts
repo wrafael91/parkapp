@@ -199,3 +199,141 @@ describe("stay constraints", () => {
     ).rejects.toThrow(/estadia_reemplazo_distinto/);
   });
 });
+
+describe("version constraints", () => {
+  it("accepts one current rate per vehicle type and one current grace period", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await tx.$executeRawUnsafe(
+          "UPDATE tarifa SET vigente_hasta = now() WHERE vigente_hasta IS NULL",
+        );
+        await tx.$executeRawUnsafe(
+          "UPDATE periodo_gracia SET vigente_hasta = now() WHERE vigente_hasta IS NULL",
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO tarifa (tipo_vehiculo, valor_minuto, tope_legal_id, creada_por_id)
+           SELECT 'CARRO', 200, tope_legal_id, $1 FROM tarifa WHERE id = $2`,
+          f.userId,
+          f.rateId,
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO tarifa (tipo_vehiculo, valor_minuto, tope_legal_id, creada_por_id)
+           SELECT 'MOTO', 161, id, $1 FROM tope_legal WHERE tipo_vehiculo = 'MOTO' ORDER BY id LIMIT 1`,
+          f.userId,
+        );
+        await tx.$executeRawUnsafe(
+          "INSERT INTO periodo_gracia (minutos, creado_por_id) VALUES (0, $1)",
+          f.userId,
+        );
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a version that ends before it starts (RI-07)", async () => {
+    await expect(
+      scenario((tx, f) =>
+        tx.$executeRawUnsafe(
+          "UPDATE tarifa SET vigente_hasta = vigente_desde WHERE id = $1",
+          f.rateId,
+        ),
+      ),
+    ).rejects.toThrow(/tarifa_vigencia_valida/);
+    await expect(
+      scenario((tx, f) =>
+        tx.$executeRawUnsafe(
+          "UPDATE periodo_gracia SET vigente_hasta = '2025-12-31T00:00:00Z' WHERE id = $1",
+          f.gracePeriodId,
+        ),
+      ),
+    ).rejects.toThrow(/periodo_gracia_vigencia_valida/);
+    await expect(
+      scenario(
+        (tx) =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO tope_legal (tipo_vehiculo, valor_minuto, con_sello_oro, norma, vigente_desde, vigente_hasta)
+             VALUES ('CARRO', 230, false, 'Prueba', '2026-01-02T00:00:00Z', '2026-01-01T00:00:00Z')`,
+          ),
+        "owner",
+      ),
+    ).rejects.toThrow(/tope_legal_vigencia_valida/);
+  });
+
+  it("rejects a second current rate for the same vehicle type (RI-07)", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        for (let i = 0; i < 2; i++) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO tarifa (tipo_vehiculo, valor_minuto, tope_legal_id, creada_por_id)
+             SELECT 'CARRO', 200, tope_legal_id, $1 FROM tarifa WHERE id = $2`,
+            f.userId,
+            f.rateId,
+          );
+        }
+      }),
+    ).rejects.toThrow(/tarifa_vigente_unica/);
+  });
+
+  it("rejects a second current grace period (RI-07)", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        for (let i = 0; i < 2; i++) {
+          await tx.$executeRawUnsafe(
+            "INSERT INTO periodo_gracia (minutos, creado_por_id) VALUES (5, $1)",
+            f.userId,
+          );
+        }
+      }),
+    ).rejects.toThrow(/periodo_gracia_vigente_unico/);
+  });
+
+  it("rejects a second current legal cap for the same vehicle type (RI-07)", async () => {
+    await expect(
+      scenario(async (tx) => {
+        for (let i = 0; i < 2; i++) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO tope_legal (tipo_vehiculo, valor_minuto, con_sello_oro, norma, vigente_desde)
+             VALUES ('MOTO', 161, false, 'Prueba', '2026-01-01T00:00:00Z')`,
+          );
+        }
+      }, "owner"),
+    ).rejects.toThrow(/tope_legal_vigente_unico/);
+  });
+
+  it("rejects a rate or a legal cap of zero or less (RI-09)", async () => {
+    for (const value of [0, -230]) {
+      await expect(
+        scenario((tx, f) =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO tarifa (tipo_vehiculo, valor_minuto, tope_legal_id, vigente_desde, vigente_hasta, creada_por_id)
+             SELECT 'CARRO', $1, tope_legal_id, vigente_desde, vigente_hasta, creada_por_id FROM tarifa WHERE id = $2`,
+            value,
+            f.rateId,
+          ),
+        ),
+      ).rejects.toThrow(/tarifa_valor_positivo/);
+      await expect(
+        scenario(
+          (tx) =>
+            tx.$executeRawUnsafe(
+              `INSERT INTO tope_legal (tipo_vehiculo, valor_minuto, con_sello_oro, norma, vigente_desde, vigente_hasta)
+               VALUES ('CARRO', $1, false, 'Prueba', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z')`,
+              value,
+            ),
+          "owner",
+        ),
+      ).rejects.toThrow(/tope_legal_valor_positivo/);
+    }
+  });
+
+  it("rejects a negative grace period (RI-10)", async () => {
+    await expect(
+      scenario((tx, f) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO periodo_gracia (minutos, vigente_desde, vigente_hasta, creado_por_id)
+           VALUES (-1, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', $1)`,
+          f.userId,
+        ),
+      ),
+    ).rejects.toThrow(/periodo_gracia_minutos_no_negativos/);
+  });
+});
