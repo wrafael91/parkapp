@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71) |
-| Versión | 1.2 — 12 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6) |
+| Versión | 1.3 — 14 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -193,7 +193,7 @@ erDiagram
 ### 2.3 Reglas de integridad
 
 Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
-en S1-05.
+(S3-03, #6; antes S1-05). La sección 3.2 dice cómo se implementa cada una.
 
 | ID | Regla | Origen |
 |---|---|---|
@@ -245,7 +245,7 @@ en S1-05.
 
 El esquema físico está en `backend/prisma/schema.prisma`, sobre PostgreSQL 16.
 Las reglas de integridad que Prisma no puede declarar (CHECK, índices únicos
-parciales y triggers) se agregan en S1-05.
+parciales y triggers) se agregan a mano en migraciones (sección 3.2).
 
 ### 3.1 Decisiones del modelo físico
 
@@ -270,6 +270,44 @@ parciales y triggers) se agregan en S1-05.
     creación del primer administrador con el script de despliegue. Por eso
     `entidad`, `entidad_id` e `ip` son opcionales, con las condiciones de RI-17 y
     RI-18.
+
+### 3.2 Restricciones de integridad en la base
+
+Tres migraciones de S3-03 (#6) agregan las restricciones CHECK y los índices
+únicos parciales: `add_stay_constraints`, `add_version_constraints` y
+`add_receipt_audit_email_constraints`, del 14 de noviembre de 2026. Las reglas que necesitan
+triggers llegan en la segunda parte de S3-03. Cada restricción tiene una prueba
+en `backend/src/integrity.test.ts` que la viola y espera el error con su nombre,
+como `parkapp_app` (o como dueño de la tabla en el tope legal, que la aplicación
+no puede escribir).
+
+| Regla | En PostgreSQL | Estado |
+|---|---|---|
+| RI-01 | CHECK `estadia_placa_formato` | Implementada (S3-03) |
+| RI-02 | Índice único parcial `estadia_placa_activa_unica` (placa, solo estadías activas) | Implementada (S3-03) |
+| RI-03 | CHECK `estadia_estado_coherente`, con motivo de anulación no vacío | Implementada (S3-03) |
+| RI-04 | Trigger de transiciones de estado | Pendiente (S3-03, segunda parte) |
+| RI-05 | CHECK `estadia_salida_posterior_ingreso` | Implementada (S3-03) |
+| RI-06 | Trigger que compara la tarifa y la gracia con la estadía | Pendiente (S3-03, segunda parte) |
+| RI-07 | CHECK `tope_legal_vigencia_valida`, `tarifa_vigencia_valida` y `periodo_gracia_vigencia_valida`; índices únicos parciales `tope_legal_vigente_unico`, `tarifa_vigente_unica` y `periodo_gracia_vigente_unico` | Implementada (S3-03) |
+| RI-08 | `parkapp_app` solo puede actualizar `vigente_hasta` (S2-19); que se cierre una sola vez necesita un trigger | En parte |
+| RI-09 | CHECK `tope_legal_valor_positivo` y `tarifa_valor_positivo`; que la tarifa no supere el tope necesita un trigger (hoy lo verifica la API) | En parte |
+| RI-10 | CHECK `periodo_gracia_minutos_no_negativos` (la columna es entera) | Implementada (S3-03) |
+| RI-11 | Índice único `comprobante_estadia_id_key` (S1-04): como máximo un comprobante por estadía; que toda estadía cerrada tenga uno necesita un trigger | En parte |
+| RI-12 | CHECK `comprobante_valores_validos`; `parkapp_app` no puede actualizar comprobantes (S2-19) | Implementada (S3-03) |
+| RI-13 | Ninguna tabla concede DELETE a `parkapp_app` (S2-19) | Implementada (S2-19) |
+| RI-14 | La bitácora solo concede SELECT e INSERT a `parkapp_app` (S2-19); que no guarde contraseñas ni tokens lo prueba cada historia | Implementada (S2-19) |
+| RI-15 | Índice único `usuario_correo_sin_mayusculas_unico` sobre `lower(correo)` | Implementada (S3-03) |
+| RI-16 | `debe_cambiar_contrasena` es verdadero por defecto (S1-04); el cambio obligatorio llega con US-05 | En parte |
+| RI-17 | CHECK `evento_auditoria_entidad_completa` | Implementada (S3-03) |
+| RI-18 | CHECK `evento_auditoria_ip_con_usuario` | Implementada (S3-03) |
+| RI-19 | CHECK `estadia_reemplazo_distinto` e índice único `estadia_reemplaza_a_id_key` (S1-04); que el reemplazo apunte a una estadía anulada y conserve su hora de ingreso necesita un trigger | En parte |
+
+Prisma no puede declarar estas restricciones en `schema.prisma`, así que no las
+conoce. Una migración generada con `prisma migrate dev` podría intentar borrar
+los índices que no reconoce, como el de `lower(correo)`: antes de aplicar una
+migración generada, se revisa que no tenga un `DROP INDEX` ni un
+`DROP CONSTRAINT` de esta tabla.
 
 ## 4. Diccionario de datos
 
@@ -460,6 +498,10 @@ su regla RI.
 | tarifa, periodo_gracia y estadia | Cada clave foránea | Consultas por usuario, tarifa y periodo de gracia, como el filtro por operador del historial (FR-18) y el resumen de recaudo (FR-20). |
 | evento_auditoria | usuario_id | Consultar los eventos de un usuario (FR-19). |
 | evento_auditoria | (accion, entidad, entidad_id, ocurrido_en) | Contar los intentos fallidos de una cuenta en los últimos 15 minutos (NFR-03). |
+| usuario | lower(correo) (único) | Correo único sin distinguir mayúsculas de minúsculas (RI-15). S3-03 |
+| estadia | placa (único, solo estadías activas) | Una estadía activa por placa (RI-02). También sirve para buscar un vehículo dentro por placa (FR-11). S3-03 |
+| tope_legal y tarifa | tipo_vehiculo (único, solo versiones vigentes) | Una versión vigente por tipo de vehículo (RI-07). S3-03 |
+| periodo_gracia | (vigente_hasta IS NULL) (único, solo la versión vigente) | Una sola versión vigente (RI-07). S3-03 |
 
 Los índices para los demás filtros del historial (fechas y placa, FR-18) se
 definen en el Sprint 3 con las pruebas de carga de NFR-14, para decidirlos con
@@ -472,3 +514,4 @@ mediciones y no por suposición.
 | 1.0 | 13 de octubre de 2026 | Modelo conceptual, lógico y físico; RI-01 a RI-18; diccionario de datos, catálogo de auditoría, tipos enumerados e índices. |
 | 1.1 | 20 de octubre de 2026 | Corrección por reemplazo (BR-17): columna `reemplaza_a_id`, relación de la estadía consigo misma en ambos diagramas, RI-19 y acción `ESTADIA_CORREGIDA` (15 acciones). La columna de la tabla de entidades pasa a llamarse Origen. |
 | 1.2 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Catálogo de acciones de auditoría (4.1): `TARIFA_CAMBIADA` y `PERIODO_GRACIA_CAMBIADO` también los dispara el sistema (script de arranque), como `CUENTA_CREADA`. (#71) |
+| 1.3 | 14 de noviembre de 2026 | Sección 3.2: restricciones CHECK e índices únicos parciales en la base (RI-01, RI-02, RI-03, RI-05, RI-07, RI-09 en parte, RI-10, RI-12, RI-15, RI-17, RI-18 y RI-19 en parte), con el estado de cada regla; índices nuevos en la sección 4.4. S3-03 (#6) |

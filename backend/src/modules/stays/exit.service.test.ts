@@ -6,6 +6,7 @@ import type { Prisma, VehicleType } from "../../generated/prisma/client.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
 import { registerExit } from "./exit.service.js";
+import { closeCurrentVersions } from "../../versions.test-helper.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -22,6 +23,7 @@ async function asApp(test: (db: Prisma.TransactionClient) => Promise<void>): Pro
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+        await closeCurrentVersions(tx);
         await test(tx);
         throw new Rollback();
       },
