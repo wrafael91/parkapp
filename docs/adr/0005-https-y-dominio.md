@@ -23,3 +23,17 @@ El dominio `.com` se registra en Cloudflare Registrar (USD 10,46 al año). El DN
 - El puerto 80 queda abierto, solo para redirección y validación.
 - Si la renovación automática falla, el certificado vence y el sitio deja de funcionar. La renovación se prueba con `certbot renew --dry-run`, y el monitoreo del Sprint 3 alerta si el sitio deja de responder.
 - NFR-09 se verifica con un escaneo TLS externo.
+
+## Actualización del 14 de noviembre de 2026
+
+El dominio es `rolopark.com`, registrado el 1 de noviembre de 2026 por USD 11,17 al año, y no un `.com` de USD 10,46: `parkapp.com` estaba ocupado. El porqué del nombre está en el ADR 0010.
+
+La implementación (S2-06) agregó controles que esta decisión no tenía, con el criterio de exponer el sistema lo menos posible:
+
+- Un registro CAA que solo autoriza a Let's Encrypt. Para que Cloudflare no agregue sus propias autoridades, su Universal SSL está desactivado; si algún día se activa el proxy de Cloudflare, hay que volver a activarlo.
+- DNSSEC activo.
+- Intercambio de llaves poscuántico (`X25519MLKEM768`), HSTS de dos años sin `preload` y sin OCSP stapling.
+- Rechazo de las peticiones por IP o con un nombre desconocido.
+- Renovación con el temporizador `certbot-renew.timer`, que venía desactivado, y un hook que recarga Nginx. Let's Encrypt ya no envía avisos de vencimiento, así que la vigilancia del certificado queda en el monitoreo del Sprint 3.
+
+El sitio obtuvo A+ en SSL Labs. La decisión no cambia; la configuración está en `infra/nginx/` y en `docs/arquitectura.md`, secciones 6.2 y 6.3.

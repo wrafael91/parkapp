@@ -25,3 +25,9 @@ La base de datos tiene tres usuarios: el maestro de RDS, solo para la creación 
 - Rotar una contraseña es manual: se cambia en PostgreSQL y en Parameter Store, y se reinicia la API.
 - Los permisos de `parkapp_app` se otorgan en una migración, así quedan versionados y se pueden probar.
 - Las pruebas de NFR-12 verifican que `parkapp_app` no pueda modificar ni borrar eventos de la bitácora.
+
+## Actualización del 14 de noviembre de 2026
+
+La contraseña del usuario maestro de RDS se guarda en Parameter Store bajo `/parkapp/admin/`, y no bajo `/parkapp/prod/`. El rol del servidor solo puede leer `/parkapp/prod/`, y su política tiene un Deny explícito sobre todo lo demás, así que un fallo en el servidor no da acceso al usuario maestro. Se verificó en S2-04: el servidor recibe `AccessDeniedException` al intentar leerla.
+
+La decisión no cambia.
