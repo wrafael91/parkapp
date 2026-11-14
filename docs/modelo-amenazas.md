@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S2-13 (#8); actualizado en S2-10 (#40), S2-11 (#41), S2-12 (#42) y S2-25 (#48) |
-| Versión | 1.4 — 13 de noviembre de 2026 |
+| Tarea | S2-13 (#8); actualizado en S2-10 (#40), S2-11 (#41), S2-12 (#42), S2-25 (#48) y S2-18 (#47) |
+| Versión | 1.5 — 13 de noviembre de 2026 |
 
 RoloPark es el nombre visible del producto desde el 3 de noviembre de 2026 (S2-23,
 #71). Los identificadores internos (repositorio, recursos de AWS, roles de la base
@@ -186,7 +186,7 @@ en su issue y en su pull request.
 
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
-| A-09 | E2 | T, I | Un script inyectado (XSS) roba datos o actúa en nombre del usuario. | CSP `default-src 'self'; base-uri 'none'; object-src 'none'` sin excepciones: la compilación no tiene scripts ni estilos en línea, y `assetsInlineLimit: 0` evita los `data:`. React escapa el contenido. Probado con un script en línea inyectado a propósito: bloqueado. | ADR 0002 | Implementado (S2-08) |
+| A-09 | E2 | T, I | Un script inyectado (XSS) roba datos o actúa en nombre del usuario. | CSP `default-src 'self'; base-uri 'none'; object-src 'none'` sin excepciones: la compilación no tiene scripts ni estilos en línea, y `assetsInlineLimit: 0` evita los `data:`. React escapa el contenido. Probado con un script en línea inyectado a propósito: bloqueado. Las fuentes del diseño (Barlow, S2-24) se empaquetan con la web y se sirven desde el mismo origen, así que la CSP sigue sin excepciones (sin `font-src` de otro dominio ni `data:`). | ADR 0002 | Implementado (S2-08); revisado en S2-24 |
 | A-10 | E2 | I | Un XSS lee el token de sesión. | El token va en una cookie `HttpOnly`, no en `localStorage`. | ADR 0003 | Implementado (S2-10) |
 | A-11 | E2 | T | *Clickjacking*: otro sitio carga la página en un marco invisible. | `frame-ancestors 'none'` en la CSP. | — | Implementado (S2-08) |
 | A-12 | E2 | T | El navegador interpreta un archivo con otro tipo MIME (por ejemplo, como script). | `X-Content-Type-Options: nosniff` en todas las respuestas. | — | Implementado (S2-08) |
@@ -357,8 +357,8 @@ atacante (*login CSRF*).
 
 | ID | Riesgo | Por qué se acepta | Mitigación actual | Se revisa |
 |---|---|---|---|---|
-| R1 | En el Sprint 2 no hay límite de peticiones, bloqueo por intentos fallidos ni lista de contraseñas filtradas (NFR-02 en parte, NFR-03 y NFR-08). | Replaneación del 26 de octubre de 2026, según la capacidad medida. | Mínimo de 15 caracteres y argon2id (S2-10). En el Sprint 2 solo existe la cuenta del administrador. | Sprint 3 ("Harden sign-in") |
-| R2 | La verificación del rol es básica; la matriz completa no se prueba (NFR-05). | Replaneación del 26 de octubre. | En el Sprint 2 solo hay un administrador: las cuentas de operador llegan con US-02 (Sprint 3). | Sprint 3 ("Test the full permission matrix") |
+| R1 | Al cierre del Sprint 2 no hay límite de peticiones, bloqueo por intentos fallidos ni lista de contraseñas filtradas (NFR-02 en parte, NFR-03 y NFR-08). | Replaneación del 26 de octubre de 2026, según la capacidad medida. | Mínimo de 15 caracteres y argon2id (S2-10). Al cierre del Sprint 2 solo existe la cuenta del administrador. | Sprint 3 ("Harden sign-in") |
+| R2 | La verificación del rol es básica; la matriz completa no se prueba (NFR-05). | Replaneación del 26 de octubre. | Al cierre del Sprint 2 solo hay un administrador: las cuentas de operador llegan con US-02 (Sprint 3). La configuración de la tarifa y del periodo de gracia ya responde 403 `ACCESO_DENEGADO` a un operador y lo registra en la bitácora, con pruebas como `parkapp_app` (S2-25). | Sprint 3 ("Test the full permission matrix") |
 | R3 | La base no tiene los CHECK de integridad de RI-05, RI-09, RI-10 y RI-12 (S1-05, #6), ni el índice único parcial de una estadía activa por placa (BR-03): dos ingresos simultáneos de la misma placa podrían quedar activos. | Movidos al Sprint 3 en la replaneación. | Validación de `calculateFee` y prueba de RI-12 (S2-09); `UPDATE` solo por columna (S2-19). La API rechaza una placa con estadía activa con 409 (S2-11), y la web desactiva el botón de ingreso mientras espera la respuesta (no cubre dos dispositivos a la vez). | Sprint 3 (#6) |
 | R4 | No hay aviso si un respaldo de AWS Backup falla. | El monitoreo se define en el Sprint 3. | Revisión manual con `aws backup list-backup-jobs`. | Sprint 3 (monitoreo) o backlog (aviso por SNS) |
 | R5 | La recuperación a un punto en el tiempo cubre solo 24 horas, y los respaldos están en la misma cuenta y región: quien tome la cuenta podría borrar la base y sus respaldos. | Límites del plan gratuito (retención de RDS de 1 día y sin funciones entre regiones). | MFA en las personas, protección contra borrado, CloudTrail y el Deny del rol de respaldos. | Al pasar al plan de pago (ADR 0009) |
@@ -368,8 +368,8 @@ atacante (*login CSRF*).
 | R9 | HSTS sin `preload`: la primera visita de un navegador nuevo puede empezar por HTTP. | `preload` es difícil de revertir y obliga a todos los subdominios. | Redirección 301 a HTTPS con nombre fijo; cookie con `Secure`. | Si la app se ofrece a más parqueaderos (después de diciembre de 2026) |
 | R10 | La cookie no usa el prefijo `__Host-`, porque el ADR 0003 fija `Path=/api`: un subdominio en manos de un atacante podría escribir cookies para el dominio. | Hoy no existe otro subdominio que `www`, que solo redirige desde el mismo Nginx. | DNS con verificación en dos pasos; la verificación exacta de `Origin` rechaza peticiones desde subdominios; cada inicio de sesión crea un token nuevo. | Si se agrega un subdominio |
 | R11 | Una sola persona administra GitHub, AWS y Cloudflare, y nadie más revisa sus cambios. | Proyecto individual. | MFA o verificación en dos pasos en las tres cuentas (en GitHub, desde el 4 de noviembre de 2026); pull request y CI obligatorios; CloudTrail. | Si se suma otra persona al proyecto |
-| R12 | **Resuelto.** Advertencias de dependencias transitivas de la CLI de Prisma, aceptadas en #5 (PR #19): GHSA-3f6p-5ww8-9rcr y GHSA-rgwj-5xj2-c3m3 de `mysql2` (dependencia de `prisma`), y GHSA-ggr8-5vv4-36mx de `deepmerge-ts` (dependencia de `@prisma/config`). Desde #57, la CLI es dependencia de producción y viaja en el artefacto. | — | Prisma 7.10.1 (#55) trae `mysql2` 3.24.4 y `deepmerge-ts` 8.0.2. `npm audit` del 4 de noviembre de 2026: 0 vulnerabilidades en el backend y en la web. | Cerrado; NFR-11 sigue con `npm audit` al cierre de cada sprint |
-| R13 | No hay análisis estático de seguridad del código propio: CodeQL no está configurado en el repositorio. | No estaba en el alcance del Sprint 2, y el código propio todavía es pequeño (la verificación de salud y el cálculo del cobro). | TypeScript estricto, pruebas en la CI, revisión en cada pull request y `npm audit` para las dependencias. | Sprint 3 (configuración predeterminada de CodeQL, antes de las historias de cuentas y anulaciones) |
+| R12 | **Resuelto.** Advertencias de dependencias transitivas de la CLI de Prisma, aceptadas en #5 (PR #19): GHSA-3f6p-5ww8-9rcr y GHSA-rgwj-5xj2-c3m3 de `mysql2` (dependencia de `prisma`), y GHSA-ggr8-5vv4-36mx de `deepmerge-ts` (dependencia de `@prisma/config`). Desde #57, la CLI es dependencia de producción y viaja en el artefacto. | — | Prisma 7.10.1 (#55) trae `mysql2` 3.24.4 y `deepmerge-ts` 8.0.2. `npm audit` del 4 de noviembre de 2026 y del cierre del Sprint 2 (13 de noviembre de 2026): 0 vulnerabilidades en el backend y en la web. | Cerrado; NFR-11 sigue con `npm audit` al cierre de cada sprint |
+| R13 | No hay análisis estático de seguridad del código propio: CodeQL no está configurado en el repositorio. | No estaba en el alcance del Sprint 2. | TypeScript estricto, pruebas en la CI, revisión en cada pull request y `npm audit` para las dependencias. | Sprint 3 (configuración predeterminada de CodeQL, antes de las historias de cuentas y anulaciones) |
 
 ## 9. Mantenimiento del modelo
 
@@ -402,3 +402,4 @@ atacante (*login CSRF*).
 | 1.2 | 10 de noviembre de 2026 | Cierre de S2-11: A-20 pasa a Implementado en `/api/estadias`; A-19 (verificación básica), A-21 (hora de ingreso, tarifa y gracia asignadas por el servidor) y A-24 (bitácora del ingreso y del rechazo), en parte. R3 incluye la falta del índice único de una estadía activa por placa. (#41) |
 | 1.3 | 11 de noviembre de 2026 | Cierre de S2-12: A-21 (hora de salida y cobro en el servidor), A-23 (el `RangeError` de `calculateFee`) y A-24 (bitácora de la salida) pasan a Implementado. A-19 y A-20 incluyen la ruta de la salida. (#42) |
 | 1.4 | 13 de noviembre de 2026 | S2-25 (US-11 y US-12): A-19 incluye la verificación del rol en `/api/tarifas` y `/api/periodo-gracia` (403 `ACCESO_DENEGADO` registrado en la bitácora); A-20, el esquema de esas rutas; y A-24, los cambios de tarifa y de periodo de gracia con usuario e IP desde la web. (#48) |
+| 1.5 | 13 de noviembre de 2026 | Revisión al cierre del Sprint 2 (S2-18): R12 con el `npm audit` del cierre (0 vulnerabilidades en el backend y en la web); R13 sin la razón del código pequeño; R1 y R2 al cierre del Sprint 2, y R2 con el 403 de la configuración de tarifas (S2-25); A-09 con las fuentes de S2-24 servidas desde el mismo origen, sin excepciones en la CSP. (#47) |
