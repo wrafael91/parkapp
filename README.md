@@ -12,6 +12,7 @@ RoloPark is the visible name. Internal identifiers (the repository, packages, AW
 
 ## Documentation (in Spanish)
 
+- [Field diagnosis of four parking lots](docs/diagnostico.md)
 - [Business rules](docs/reglas-de-negocio.md)
 - [Requirements](docs/requisitos.md)
 - [Data model](docs/modelo-datos.md)
