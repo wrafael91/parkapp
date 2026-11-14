@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71) |
-| Versión | 1.6 — 12 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45) |
+| Versión | 1.7 — 14 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -198,8 +198,8 @@ Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3
 | US-08 | Registrar la salida y calcular el cobro | FR-12, FR-13 | Must | 2 |
 | US-09 | Emitir el comprobante de pago | FR-14 | Must | 2 |
 | US-10 | Anular o corregir una estadía | FR-15, FR-21, FR-22 | Must | 3 |
-| US-11 | Configurar la tarifa por minuto | FR-16 | Must | 3 |
-| US-12 | Configurar el periodo de gracia | FR-17 | Must | 3 |
+| US-11 | Configurar la tarifa por minuto | FR-16 | Must | 2 |
+| US-12 | Configurar el periodo de gracia | FR-17 | Must | 2 |
 | US-13 | Consultar el historial | FR-18 | Should | 3 |
 | US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
 | US-15 | Ver el resumen de recaudo | FR-20 | Should | 3 |
@@ -382,6 +382,20 @@ requisito funcional, y los 22 requisitos funcionales tienen al menos una
 historia de usuario. En el Sprint 2 se agrega una columna con las pruebas que
 verifican cada requisito.
 
+### 5.3 Origen y validación
+
+Cada requisito y cada decisión de diseño tiene uno de cuatro orígenes. Los que
+salen del diagnóstico exploratorio (`docs/diagnostico.md`) y los que son
+propuesta del estudiante se validan en la visita a los parqueaderos, después de
+la Entrega 2 (`docs/diagnostico.md`, sección 6).
+
+| Origen | Requisitos y decisiones | Validación |
+|---|---|---|
+| Norma verificada | Cobro por minuto y sin permanencia mínima (BR-05), redondeo al múltiplo de $50 inferior (BR-07), tarifa con IVA por tipo de vehículo (BR-09), tope legal (BR-10, BR-15) y contenido del comprobante (BR-14) | Contrastados con el Decreto 652 de 2025 y el Decreto 026 de 2026 (`docs/reglas-de-negocio.md`, sección 3) |
+| Observado en el diagnóstico | Verificación de la placa a la salida (BR-04, parqueadero A), tiquete perdido sin recargo (BR-13, B), comprobante con las dos horas (BR-14, A y B), tope por periodo (#14; B, C y D) y operación sin conexión (#54, D) | Se confirman en la visita |
+| Revisado con la asesora | Alcance de la Entrega 2 y flujo mínimo que debe funcionar para la Semana TIC: iniciar sesión, registrar un ingreso, ver los vehículos dentro, registrar la salida, cobrar y emitir el comprobante | Reunión del 7 de noviembre de 2026; flujo en producción desde el 11 de noviembre (S2-12) |
+| Propuesta del estudiante | Solo minutos completos (BR-06), alerta de posible placa clonada (BR-03), periodo de gracia (BR-08), versiones de tarifa y gracia (BR-11), anulación sin borrado (BR-12), horas asignadas por el servidor (BR-16) y corrección por reemplazo (BR-17) | Pendientes de validar en la visita |
+
 ## 6. Referencias
 
 International Organization for Standardization & International Electrotechnical
@@ -407,6 +421,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.4 | 22 de octubre de 2026 | El administrador también corrige registros (BR-17). US-05 usa los actores definidos. US-09: el comprobante muestra su número consecutivo. |
 | 1.5 | 30 de octubre de 2026 | Replaneación del Sprint 2 del 26 de octubre, según la capacidad medida: US-11, NFR-03, NFR-08 y NFR-22 pasan al Sprint 3, y US-07, NFR-02 y NFR-05 se completan en el Sprint 3. El script de arranque carga la tarifa. Correcciones: frase duplicada en la sección 3, criterio de US-04 fuera de lugar, criterio repetido en US-06 y referencias de la sección 6 partidas por el historial. |
 | 1.6 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). (#71) |
-
-OWASP Foundation. (2025). *OWASP Application Security Verification Standard
-5.0.0*. https://owasp.org/www-project-application-security-verification-standard/
+| 1.7 | 14 de noviembre de 2026 | Origen y validación de los requisitos (sección 5.3), con el diagnóstico en `docs/diagnostico.md`. US-11 y US-12 se entregaron en el Sprint 2 (S2-25, #48). Se quita la referencia de OWASP repetida después del historial. S3-01 (#45) |
