@@ -1,5 +1,7 @@
 const MS_PER_MINUTE = 60_000;
 const MINUTES_PER_HOUR = 60;
+// BR-18 and RI-20: a cap period lasts from 1 to 24 hours.
+const MAX_PERIOD_HOURS = 24;
 // BR-07: the total is rounded down to a multiple of this many pesos.
 const ROUNDING_STEP = 50;
 
@@ -73,10 +75,12 @@ function chargeByPeriod(fullMinutes: number, valuePerMinute: number, cap: Period
   return fullBlocks * blockCharge(periodMinutes) + blockCharge(lastBlockMinutes);
 }
 
-// RI-05, RI-09 and RI-10 become database CHECK constraints in S1-05 (Sprint 3).
-// Until then this is the only guard: without it, an exit before the entry gave
-// -1 minutes, an invalid date gave NaN and a rate of 0 charged $0, with no error.
-function assertValid({ entryTime, exitTime, valuePerMinute, gracePeriodMinutes }: FeeInput): void {
+// The database also checks RI-05, RI-09 and RI-10 since S3-03 (#6), and RI-20
+// with the cap's migration (#14). This guard keeps the function correct on its
+// own: without it, an exit before the entry gave -1 minutes, an invalid date gave
+// NaN, a rate of 0 charged $0 and a cap of 0 hours gave NaN, with no error.
+function assertValid(input: FeeInput): void {
+  const { entryTime, exitTime, valuePerMinute, gracePeriodMinutes, periodCap } = input;
   const entry = entryTime.getTime();
   const exit = exitTime.getTime();
   if (Number.isNaN(entry) || Number.isNaN(exit)) {
@@ -90,5 +94,14 @@ function assertValid({ entryTime, exitTime, valuePerMinute, gracePeriodMinutes }
   }
   if (!Number.isInteger(gracePeriodMinutes) || gracePeriodMinutes < 0) {
     throw new RangeError("Grace period must be a non-negative integer number of minutes");
+  }
+  if (periodCap !== null) {
+    const { hours, value } = periodCap;
+    if (!Number.isInteger(hours) || hours < 1 || hours > MAX_PERIOD_HOURS) {
+      throw new RangeError("Cap period must be a whole number of hours from 1 to 24");
+    }
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new RangeError("Cap value must be a positive integer");
+    }
   }
 }
