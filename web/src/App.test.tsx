@@ -189,6 +189,7 @@ describe("sections (matrix 1.2)", () => {
     ],
   };
   const GRACE_PERIOD = { minutos: 5, vigenteDesde: "2026-11-07T17:35:00.000Z" };
+  const NO_CAP = { topePeriodo: null };
 
   it("lets an administrator switch between Operación and Tarifas", async () => {
     stubFetch(
@@ -196,6 +197,7 @@ describe("sections (matrix 1.2)", () => {
       jsonResponse(200, NO_STAYS),
       jsonResponse(200, RATES),
       jsonResponse(200, GRACE_PERIOD),
+      jsonResponse(200, NO_CAP),
       jsonResponse(200, NO_STAYS),
     );
     const user = userEvent.setup();

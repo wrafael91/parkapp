@@ -23,6 +23,9 @@ const RATES = {
   ],
 };
 const GRACE_PERIOD = { minutos: 5, vigenteDesde: "2026-11-07T17:35:00.000Z" };
+// Lot B's cap (BR-18), and the answer when the cap is off.
+const CAP = { topePeriodo: { horas: 12, valor: 11000, vigenteDesde: "2026-11-15T17:00:00.000Z" } };
+const NO_CAP = { topePeriodo: null };
 const NO_SESSION = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
 const INTERNAL_ERROR = {
   error: { codigo: "ERROR_INTERNO", mensaje: "Ocurrió un error inesperado." },
@@ -32,14 +35,19 @@ function apiError(codigo: string) {
   return { error: { codigo, mensaje: "Un mensaje de la API que la página no muestra." } };
 }
 
-function loaded() {
-  return [jsonResponse(200, RATES), jsonResponse(200, GRACE_PERIOD)];
+function loaded(cap: object = CAP) {
+  return [jsonResponse(200, RATES), jsonResponse(200, GRACE_PERIOD), jsonResponse(200, cap)];
 }
 
 function renderRates() {
   const onSessionEnded = vi.fn();
   render(<Rates onSessionEnded={onSessionEnded} />);
   return onSessionEnded;
+}
+
+// The line with the cap in force, above its fields.
+function capStatus() {
+  return screen.getByText(/^Tope actual:/).textContent;
 }
 
 // The cells of the row of a vehicle type in the rates table.
@@ -67,13 +75,52 @@ describe("loading the rates", () => {
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/tarifas",
       "/api/periodo-gracia",
+      "/api/tope-periodo",
     ]);
     for (const [, init] of fetchMock.mock.calls) expect(init).not.toHaveProperty("credentials");
   });
 
+  it("shows the cap in force and fills its fields (US-16)", async () => {
+    stubFetch(...loaded());
+    renderRates();
+
+    await screen.findByRole("heading", { name: "Tope por periodo" });
+    expect(capStatus()).toBe("Tope actual: $11.000 cada 12 horas");
+    expect(screen.getByLabelText("Periodo (horas)")).toHaveProperty("value", "12");
+    expect(screen.getByLabelText("Valor máximo por periodo")).toHaveProperty("value", "11000");
+  });
+
+  it("shows the cap off, with empty fields", async () => {
+    stubFetch(...loaded(NO_CAP));
+    renderRates();
+
+    await screen.findByRole("heading", { name: "Tope por periodo" });
+    expect(capStatus()).toBe("Tope actual: desactivado");
+    expect(screen.getByLabelText("Periodo (horas)")).toHaveProperty("value", "");
+    expect(screen.getByLabelText("Valor máximo por periodo")).toHaveProperty("value", "");
+  });
+
   it.each([
-    ["fails", [jsonResponse(500, INTERNAL_ERROR), jsonResponse(200, GRACE_PERIOD)]],
-    ["cannot be reached", [new TypeError("Failed to fetch"), new TypeError("Failed to fetch")]],
+    [
+      "fails",
+      [jsonResponse(500, INTERNAL_ERROR), jsonResponse(200, GRACE_PERIOD), jsonResponse(200, CAP)],
+    ],
+    [
+      "fails to load the cap",
+      [
+        jsonResponse(200, RATES),
+        jsonResponse(200, GRACE_PERIOD),
+        jsonResponse(500, INTERNAL_ERROR),
+      ],
+    ],
+    [
+      "cannot be reached",
+      [
+        new TypeError("Failed to fetch"),
+        new TypeError("Failed to fetch"),
+        new TypeError("Failed to fetch"),
+      ],
+    ],
   ])("says so in an alert when the server %s", async (_case, answers) => {
     stubFetch(...answers);
     renderRates();
@@ -84,7 +131,11 @@ describe("loading the rates", () => {
   });
 
   it("goes back to sign in when the session ended (401)", async () => {
-    stubFetch(jsonResponse(401, NO_SESSION), jsonResponse(401, NO_SESSION));
+    stubFetch(
+      jsonResponse(401, NO_SESSION),
+      jsonResponse(401, NO_SESSION),
+      jsonResponse(401, NO_SESSION),
+    );
     const onSessionEnded = renderRates();
 
     await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
@@ -114,7 +165,7 @@ describe("saving a rate (US-11)", () => {
       "Tarifa de carro guardada: $200 por minuto.",
     );
     expect(rowOf("Carro").slice(0, 3)).toEqual(["Carro", "$230", "$200"]);
-    const [url, init] = fetchMock.mock.calls[2];
+    const [url, init] = fetchMock.mock.calls[3];
     expect(url).toBe("/api/tarifas");
     expect(init).toEqual({
       method: "POST",
@@ -207,7 +258,7 @@ describe("saving the grace period (US-12)", () => {
     expect((await screen.findByRole("status")).textContent).toBe(
       "Periodo de gracia guardado: 10 minutos.",
     );
-    const [url, init] = fetchMock.mock.calls[2];
+    const [url, init] = fetchMock.mock.calls[3];
     expect(url).toBe("/api/periodo-gracia");
     expect(init).toEqual({
       method: "POST",
@@ -227,7 +278,7 @@ describe("saving the grace period (US-12)", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Los minutos de gracia deben ser un número entero, desde 0.",
     );
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(JSON.stringify({ minutos: null }));
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ minutos: null }));
   });
 
   it("explains a failure in an alert", async () => {
