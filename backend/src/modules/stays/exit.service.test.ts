@@ -3,6 +3,7 @@ import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import { calculateFee } from "../../domain/fee.js";
 import type { Prisma, VehicleType } from "../../generated/prisma/client.js";
+import { deactivatePeriodCap, setPeriodCap } from "../rates/period-cap.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
 import { registerExit } from "./exit.service.js";
@@ -116,11 +117,11 @@ describe("registerExit (FR-12, FR-13, FR-14, RI-11)", () => {
         roundingAdjustment: 10,
         total: 8500,
       });
-      // The cap discount has no column yet (#14): with no cap it is always 0.
       expect(receipt).toMatchObject({
         stayId,
         fullMinutes: 37,
         subtotal: 8510,
+        capDiscount: 0,
         roundingAdjustment: 10,
         total: 8500,
       });
@@ -192,6 +193,130 @@ describe("registerExit (FR-12, FR-13, FR-14, RI-11)", () => {
       });
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ userId, ip: IP, occurredAt: exit, detail: null });
+    });
+  });
+});
+
+// The scheme of parking lot B in examples 7 to 13 of docs/reglas-de-negocio.md: $33
+// per minute, 5 minutes of grace and $11,000 every 12 hours. The car rate changes
+// one day after setUp and before ENTRY, so every stay enters with $33.
+async function setUpLotB(db: Prisma.TransactionClient): Promise<number> {
+  const userId = await setUp(db);
+  const now = new Date("2026-11-08T12:00:00.000Z");
+  const rate = await setRate(db, {
+    vehicleType: "CAR",
+    valuePerMinute: 33,
+    createdById: userId,
+    now,
+  });
+  const periodCap = await setPeriodCap(db, {
+    hours: 12,
+    value: 11000,
+    now,
+    changedBy: { userId, ip: IP },
+  });
+  if (!rate.ok || !periodCap.ok) throw new Error("setup failed");
+  return userId;
+}
+
+describe("registerExit with a cap per period (BR-18)", () => {
+  it("charges with the cap stored with the stay and stores its discount (example 12)", async () => {
+    await asApp(async (db) => {
+      const userId = await setUpLotB(db);
+      const stayId = await enter(db, userId, "SAL123", "CAR");
+
+      const result = await registerExit(db, {
+        stayId,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 900),
+      });
+
+      if (!result.ok) throw new Error("exit not registered");
+      const receipt = await db.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+      expect(receipt).toMatchObject({
+        stayId,
+        fullMinutes: 900,
+        subtotal: 29700,
+        capDiscount: 12760,
+        roundingAdjustment: 40,
+        total: 16900,
+      });
+    });
+  });
+
+  it("charges each stay the cap in force at its entry after it changes or is turned off (BR-11)", async () => {
+    await asApp(async (db) => {
+      const userId = await setUpLotB(db);
+      const changedBy = { userId, ip: IP };
+      const first = await enter(db, userId, "SAL123", "CAR");
+      await setPeriodCap(db, { hours: 1, value: 1000, now: minutesAfter(ENTRY, 1), changedBy });
+      const second = await registerEntry(db, {
+        plate: "SAL124",
+        vehicleType: "CAR",
+        color: "Gris",
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 2),
+      });
+      await deactivatePeriodCap(db, { now: minutesAfter(ENTRY, 3), changedBy });
+      if (!second.ok) throw new Error("entry not registered");
+
+      const firstExit = await registerExit(db, {
+        stayId: first,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 900),
+      });
+      const secondExit = await registerExit(db, {
+        stayId: second.stayId,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 902),
+      });
+
+      if (!firstExit.ok || !secondExit.ok) throw new Error("exit not registered");
+      const receipts = await db.receipt.findMany({
+        where: { id: { in: [firstExit.receiptId, secondExit.receiptId] } },
+        orderBy: { id: "asc" },
+      });
+      // 15 blocks of 1 hour, each one capped at $1,000: $15,000.
+      expect(receipts.map(({ capDiscount, total }) => ({ capDiscount, total }))).toEqual([
+        { capDiscount: 12760, total: 16900 },
+        { capDiscount: 14700, total: 15000 },
+      ]);
+    });
+  });
+
+  // Passes since the red of cycle F, on purpose: a cap that starts after the entry
+  // never applies to the stay (BR-11).
+  it("charges by the minute a stay that entered with no cap, even if one starts later", async () => {
+    await asApp(async (db) => {
+      const userId = await setUp(db);
+      await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 33,
+        createdById: userId,
+        now: new Date("2026-11-08T12:00:00.000Z"),
+      });
+      const stayId = await enter(db, userId, "SAL123", "CAR");
+      await setPeriodCap(db, {
+        hours: 12,
+        value: 11000,
+        now: minutesAfter(ENTRY, 1),
+        changedBy: { userId, ip: IP },
+      });
+
+      const result = await registerExit(db, {
+        stayId,
+        userId,
+        ip: IP,
+        now: minutesAfter(ENTRY, 900),
+      });
+
+      if (!result.ok) throw new Error("exit not registered");
+      const receipt = await db.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+      expect(receipt).toMatchObject({ subtotal: 29700, capDiscount: 0, total: 29700 });
     });
   });
 });

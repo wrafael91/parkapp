@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma } from "../../generated/prisma/client.js";
+import { deactivatePeriodCap, setPeriodCap } from "../rates/period-cap.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
 import { closeCurrentVersions } from "../../versions.test-helper.js";
@@ -125,6 +126,55 @@ describe("registerEntry (FR-07, BR-02, BR-16)", () => {
         gracePeriodId: setup.gracePeriodId,
         brand: null,
       });
+    });
+  });
+
+  it("keeps the cap in force at entry (BR-11, BR-18)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const periodCap = await setPeriodCap(db, {
+        hours: 12,
+        value: 11000,
+        now: RATES_FROM,
+        changedBy: { userId: setup.userId, ip: IP },
+      });
+
+      const result = await registerEntry(db, {
+        plate: "ABC123",
+        vehicleType: "CAR",
+        color: "Rojo",
+        userId: setup.userId,
+        ip: IP,
+        now: NOW,
+      });
+
+      if (!periodCap.ok || !result.ok) throw new Error("setup failed");
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: result.stayId } });
+      expect(stay.periodCapId).toBe(periodCap.periodCapId);
+    });
+  });
+
+  // Passes since the red of cycle F, on purpose: it fixes that turning the cap off
+  // means no cap for new stays (BR-18).
+  it("keeps no cap when it was turned off before the entry (BR-11)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const changedBy = { userId: setup.userId, ip: IP };
+      await setPeriodCap(db, { hours: 12, value: 11000, now: RATES_FROM, changedBy });
+      await deactivatePeriodCap(db, { now: new Date("2026-11-08T12:00:00.000Z"), changedBy });
+
+      const result = await registerEntry(db, {
+        plate: "ABC123",
+        vehicleType: "CAR",
+        color: "Rojo",
+        userId: setup.userId,
+        ip: IP,
+        now: NOW,
+      });
+
+      if (!result.ok) throw new Error("entry not registered");
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: result.stayId } });
+      expect(stay.periodCapId).toBeNull();
     });
   });
 
