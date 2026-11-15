@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14) |
-| Versión | 1.8 — 15 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49) |
+| Versión | 1.9 — 15 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -15,7 +15,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 
 | Actor | Descripción | Usa la aplicación |
 |---|---|---|
-| Operador | Registra ingresos y salidas, y entrega el comprobante de pago. | Sí |
+| Operador | Registra ingresos y salidas, entrega el comprobante de pago y consulta el historial. | Sí |
 | Administrador | Configura la tarifa, el periodo de gracia y el tope por periodo, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
 | Cliente | Propietario o conductor del vehículo. Recibe el comprobante. | No |
 | Mantenedor de la plataforma | Actualiza el tope legal y la condición de Sello Oro mediante migraciones versionadas en el repositorio (BR-15). | No |
@@ -35,7 +35,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Configurar el periodo de gracia | ✗ | ✓ | BR-08, BR-11 |
 | Configurar el tope por periodo | ✗ | ✓ | BR-11, BR-18 |
 | Crear y desactivar cuentas de operador | ✗ | ✓ | — |
-| Consultar el historial de estadías y comprobantes | ✗ | ✓ | — |
+| Consultar el historial de estadías y comprobantes | ✓ | ✓ | BR-12, decisión 5 |
 | Consultar la bitácora de auditoría | ✗ | ✓ | BR-12 |
 | Modificar el tope legal o el Sello Oro | ✗ | ✗ | BR-15 (solo por migración) |
 
@@ -61,7 +61,18 @@ automatizada en la que la API responde 403.
   arranque) debe cambiarse en el primer inicio de sesión. Si el administrador
   conociera la contraseña de un operador, podría actuar en su nombre, y se
   perdería la trazabilidad de quién hizo cada registro.
-   
+
+5. **El operador también consulta el historial.** Es quien está en el
+   parqueadero cuando un cliente pierde el tiquete o reclama por una estadía
+   anterior, y el administrador no siempre está. Solo consulta: nadie borra
+   registros (BR-12), el administrador anula con motivo (US-10) y las cuentas
+   se desactivan, no se borran (decisión 3). Entregar datos del historial a
+   terceros, como la policía, lo decide el responsable del parqueadero, que es
+   el responsable del tratamiento de esos datos (Ley 1581 de 2012): si algún
+   día hay exportación o reporte impreso del historial, será solo del
+   administrador. El resumen del recaudo (FR-20) sigue siendo solo del
+   administrador.
+
 ## 2. Requisitos funcionales
 
 La columna Origen indica de dónde proviene cada requisito: una sección de este documento (por ejemplo, la 1.3, de control de acceso), una regla de negocio o un requisito no funcional. «Necesidad operativa» señala los que responden directamente a una tarea del operador, sin una regla que los exija.
@@ -85,7 +96,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 | FR-08 | El sistema normaliza la placa (mayúsculas, sin espacios ni guiones) y valida su formato según el tipo de vehículo. | Ambos | BR-02 |
 | FR-09 | El sistema rechaza el ingreso de una placa con estadía activa, alerta al operador de una posible placa clonada y registra el intento en la bitácora con los datos del vehículo rechazado. | Ambos | BR-03 |
 | FR-10 | El sistema lista los vehículos que están dentro del parqueadero. | Ambos | Necesidad operativa |
-| FR-11 | El sistema permite buscar una estadía activa por placa. | Ambos | BR-13 |
+| FR-11 | El sistema permite buscar una estadía activa por la placa completa o por una parte de ella. | Ambos | BR-13 |
 
 ### 2.3 Salida y cobro
 
@@ -115,7 +126,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
-| FR-18 | El administrador consulta el historial de estadías y comprobantes, con filtros por fechas, placa, operador y estado. | Administrador | BR-12 |
+| FR-18 | El operador y el administrador consultan el historial de estadías y comprobantes, con filtros por fechas, placa, tipo de vehículo, operador y estado. | Ambos | BR-12, sección 1.3 |
 | FR-19 | El administrador consulta la bitácora de auditoría: inicios de sesión (exitosos y fallidos), ingresos, ingresos rechazados por placa con estadía activa, salidas, anulaciones, correcciones, cambios de configuración, gestión de cuentas y accesos denegados. | Administrador | BR-03, BR-12 |
 | FR-20 | El administrador ve un resumen del recaudo por día y por operador. | Administrador | Sección 1.3 |
 
@@ -269,7 +280,9 @@ su estadía se cuente desde ese momento.
 por placa **para** encontrar rápido la estadía al momento de la salida.
 
 - **Dado** varias estadías activas, **cuando** abro la lista, **entonces** veo placa, tipo, color y hora de ingreso de cada una.
-- **Dado** que busco `abc123`, **cuando** existe una estadía activa de `ABC123`, **entonces** aparece como resultado.
+- **Dado** que busco `abc123` o `ABC-123`, **cuando** existe una estadía activa de `ABC123`, **entonces** aparece como resultado.
+- **Dado** que escribo una parte de la placa, como `bc 1`, **cuando** busco, **entonces** veo los vehículos dentro cuya placa la contiene, como `ABC123` y `ABC12D`.
+- **Dado** que ningún vehículo dentro coincide, **cuando** busco, **entonces** se indica con la placa buscada.
 
 #### US-08 Registrar la salida y calcular el cobro
 
@@ -321,11 +334,23 @@ no cobrar a quienes salen en pocos minutos.
 
 #### US-13 Consultar el historial
 
-**Como** administrador, **quiero** consultar el historial de estadías y
-comprobantes **para** revisar la operación.
+**Como** operador o administrador, **quiero** consultar el historial de
+estadías y comprobantes **para** revisar la operación y encontrar un vehículo
+que ya salió.
 
+- **Dado** estadías de varios días, **cuando** elijo un día, **entonces** veo las que ingresaron ese día en hora de Bogotá, de la más reciente a la más antigua, con su estado (dentro, cerrada o anulada) y, si se cerró, el número y el total de su comprobante.
+- **Dado** que escribo la placa completa o una parte de ella sin elegir un día, **cuando** busco, **entonces** veo sus estadías de todos los días, activas, cerradas y anuladas.
+- **Dado** que elijo carro o moto, **cuando** busco, **entonces** solo veo ese tipo de vehículo.
+- **Dado** más de 500 resultados, **cuando** busco, **entonces** veo los 500 más recientes y un aviso para filtrar más.
+- **Dado** que el vehículo que busco en la lista de vehículos dentro ya salió, **cuando** no aparece, **entonces** se sugiere buscarlo en el historial.
 - **Dado** estadías de varios días, **cuando** filtro por fechas, placa, operador o estado, **entonces** veo solo las que cumplen el filtro.
 - **Dado** 100.000 estadías registradas, **cuando** filtro, **entonces** el resultado llega en menos de 2 segundos (NFR-14).
+
+La primera parte se entrega en el Sprint 3 (S3-06): la pestaña Historial, con
+un día, la placa y el tipo de vehículo, y los cinco primeros criterios. Quedan
+pendientes los filtros por operador y estado, los rangos de fechas y la
+medición de NFR-14 (objetivo 4). Exportar o imprimir el historial no hace
+parte de esta historia (decisión 5 de la sección 1.3).
 
 #### US-14 Consultar la bitácora de auditoría
 
@@ -415,6 +440,11 @@ la Entrega 2 (`docs/diagnostico.md`, sección 6).
 
 ## 6. Referencias
 
+Congreso de la República de Colombia. (2012, 17 de octubre). *Ley Estatutaria
+1581 de 2012, por la cual se dictan disposiciones generales para la protección
+de datos personales*. Diario Oficial No. 48.587.
+https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=49981
+
 International Organization for Standardization & International Electrotechnical
 Commission. (2023). *Systems and software engineering — Systems and software
 Quality Requirements and Evaluation (SQuaRE) — Product quality model*
@@ -440,3 +470,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.6 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). (#71) |
 | 1.7 | 14 de noviembre de 2026 | Origen y validación de los requisitos (sección 5.3), con el diagnóstico en `docs/diagnostico.md`. US-11 y US-12 se entregaron en el Sprint 2 (S2-25, #48). Se quita la referencia de OWASP repetida después del historial. S3-01 (#45) |
 | 1.8 | 15 de noviembre de 2026 | Tope por periodo (BR-18): FR-23 y US-16, fila nueva en la matriz de permisos y actor administrador con el tope. FR-13, US-08 y US-09 incluyen el tope. Cobertura con 18 reglas y 23 requisitos (decía 17 reglas, de BR-01 a BR-16). S3-04 (#14) |
+| 1.9 | 15 de noviembre de 2026 | El operador también consulta el historial: decisión 5 de la sección 1.3 (exportarlo sería solo del administrador; Ley 1581 de 2012), matriz de permisos, actor operador, FR-18 con el tipo de vehículo y US-13 para los dos actores, con los criterios de su primera parte (S3-06). FR-11 y US-07: búsqueda por la placa completa o por una parte de ella. S3-05 (#49) |
