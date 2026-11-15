@@ -200,6 +200,24 @@ describe("search by plate", () => {
     expect(rows().map((cells) => cells[0])).toEqual(["ABC12D", "ABC123"]);
   });
 
+  it("says so when no vehicle inside matches, with the plate as searched", async () => {
+    stubFetch(jsonResponse(200, THREE));
+    const user = userEvent.setup();
+    renderStays();
+    await search(user, "tst-1");
+    expect(screen.getByText("Ningún vehículo dentro coincide con TST1.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("shows the whole list again when the field is emptied", async () => {
+    stubFetch(jsonResponse(200, THREE));
+    const user = userEvent.setup();
+    renderStays();
+    await search(user, "tst");
+    await user.clear(screen.getByLabelText("Buscar por placa"));
+    expect(rows().map((cells) => cells[0])).toEqual(["ABC12D", "ABC123", "XYZ789"]);
+  });
+
   it("has no search field when there are no vehicles inside", async () => {
     stubFetch(jsonResponse(200, NO_STAYS));
     renderStays();
