@@ -55,6 +55,29 @@ describe("parkapp_app privileges (NFR-12)", () => {
     );
   });
 
+  it("can insert and close a cap version, but not edit or delete it (RI-08)", async () => {
+    await expect(
+      runAsApp(
+        "INSERT INTO tope_periodo (horas, valor, creado_por_id) SELECT 12, 11000, id FROM usuario WHERE false",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      runAsApp("UPDATE tope_periodo SET vigente_hasta = now() WHERE false"),
+    ).resolves.toBeUndefined();
+    await expect(runAsApp("UPDATE tope_periodo SET valor = 1 WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(runAsApp("DELETE FROM tope_periodo WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+
+  it("cannot change the cap a stay entered with (BR-11)", async () => {
+    await expect(runAsApp("UPDATE estadia SET tope_periodo_id = NULL WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+
   it("cannot create objects in the schema", async () => {
     await expect(runAsApp("CREATE TABLE intrusion (id int)")).rejects.toThrow(/permission denied/);
   });

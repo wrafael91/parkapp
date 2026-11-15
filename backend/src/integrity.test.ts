@@ -70,6 +70,7 @@ interface StayValues {
   withVoidUser?: boolean;
   voidReason?: string | null;
   replacesId?: number | null;
+  periodCapId?: number | null;
 }
 
 // Inserts a stay that enters at 10:00 on January 1, 2026, and returns its id.
@@ -84,15 +85,16 @@ async function insertStay(tx: Tx, f: Fixture, values: StayValues = {}): Promise<
     withVoidUser: false,
     voidReason: null,
     replacesId: null,
+    periodCapId: null,
     ...values,
   };
   const [stay] = await tx.$queryRawUnsafe<{ id: number }[]>(
     `INSERT INTO estadia (id, placa, tipo_vehiculo, color, estado, hora_ingreso, ingreso_por_id,
        tarifa_id, periodo_gracia_id, hora_salida, salida_por_id, anulada_en, anulada_por_id,
-       motivo_anulacion, reemplaza_a_id)
+       motivo_anulacion, reemplaza_a_id, tope_periodo_id)
      VALUES (COALESCE($1, nextval('estadia_id_seq')), $2, $3::tipo_vehiculo, 'Gris',
        $4::estado_estadia, '2026-01-01T10:00:00Z', $5, $6, $7, $8::timestamptz, $9, $10::timestamptz,
-       $11, $12, $13)
+       $11, $12, $13, $14)
      RETURNING id`,
     v.id ?? null,
     v.plate,
@@ -107,6 +109,7 @@ async function insertStay(tx: Tx, f: Fixture, values: StayValues = {}): Promise<
     v.withVoidUser ? f.userId : null,
     v.voidReason,
     v.replacesId,
+    v.periodCapId,
   );
   return stay!.id;
 }
@@ -338,9 +341,94 @@ describe("version constraints", () => {
   });
 });
 
+interface PeriodCapValues {
+  hours?: number;
+  value?: number;
+  validFrom?: string;
+  validTo?: string | null;
+}
+
+// Inserts a cap version, closed by default like the fixture's rate, and returns its id.
+async function insertPeriodCap(tx: Tx, f: Fixture, values: PeriodCapValues = {}): Promise<number> {
+  const v = {
+    hours: 12,
+    value: 11000,
+    validFrom: "2026-01-01T00:00:00Z",
+    validTo: "2026-01-02T00:00:00Z",
+    ...values,
+  };
+  const [periodCap] = await tx.$queryRawUnsafe<{ id: number }[]>(
+    `INSERT INTO tope_periodo (horas, valor, vigente_desde, vigente_hasta, creado_por_id)
+     VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5) RETURNING id`,
+    v.hours,
+    v.value,
+    v.validFrom,
+    v.validTo,
+    f.userId,
+  );
+  return periodCap!.id;
+}
+
+describe("period cap constraints", () => {
+  it("accepts caps of 1 and 24 hours, one current cap and a stay that keeps a cap", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await insertPeriodCap(tx, f, { hours: 1, value: 1000 });
+        const periodCapId = await insertPeriodCap(tx, f, { hours: 24 });
+        await tx.$executeRawUnsafe(
+          "UPDATE tope_periodo SET vigente_hasta = now() WHERE vigente_hasta IS NULL",
+        );
+        await insertPeriodCap(tx, f, { validFrom: "2026-01-02T00:00:00Z", validTo: null });
+        await insertStay(tx, f, { periodCapId });
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a stay whose cap does not exist", async () => {
+    await expect(
+      scenario((tx, f) => insertStay(tx, f, { periodCapId: 2_000_000_000 })),
+    ).rejects.toThrow(/estadia_tope_periodo_id_fkey/);
+  });
+
+  it("rejects a period outside 1 to 24 hours (RI-20)", async () => {
+    for (const hours of [0, 25, -12]) {
+      await expect(scenario((tx, f) => insertPeriodCap(tx, f, { hours }))).rejects.toThrow(
+        /tope_periodo_horas_validas/,
+      );
+    }
+  });
+
+  it("rejects a cap value of zero or less (RI-20)", async () => {
+    for (const value of [0, -11000]) {
+      await expect(scenario((tx, f) => insertPeriodCap(tx, f, { value }))).rejects.toThrow(
+        /tope_periodo_valor_positivo/,
+      );
+    }
+  });
+
+  it("rejects a cap version that does not end after it starts (RI-07)", async () => {
+    for (const validTo of ["2025-12-31T00:00:00Z", "2026-01-01T00:00:00Z"]) {
+      await expect(scenario((tx, f) => insertPeriodCap(tx, f, { validTo }))).rejects.toThrow(
+        /tope_periodo_vigencia_valida/,
+      );
+    }
+  });
+
+  it("rejects a second current cap (RI-07)", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        for (let i = 0; i < 2; i++) {
+          await insertPeriodCap(tx, f, { validTo: null });
+        }
+      }),
+    ).rejects.toThrow(/tope_periodo_vigente_unico/);
+  });
+});
+
 interface ReceiptValues {
   fullMinutes: number;
   subtotal: number;
+  capDiscount?: number;
   roundingAdjustment: number;
   total: number;
 }
@@ -348,11 +436,12 @@ interface ReceiptValues {
 async function insertReceipt(tx: Tx, f: Fixture, values: ReceiptValues): Promise<void> {
   const stayId = await insertStay(tx, f, CLOSED);
   await tx.$executeRawUnsafe(
-    `INSERT INTO comprobante (estadia_id, minutos_completos, subtotal, ajuste_redondeo, total)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO comprobante (estadia_id, minutos_completos, subtotal, descuento_tope, ajuste_redondeo, total)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     stayId,
     values.fullMinutes,
     values.subtotal,
+    values.capDiscount ?? 0,
     values.roundingAdjustment,
     values.total,
   );
@@ -393,6 +482,44 @@ describe("receipt, audit and account constraints", () => {
     ).resolves.toBeUndefined();
   });
 
+  // Examples 9 and 12 of docs/reglas-de-negocio.md ($33 per minute, $11,000 every 12 hours).
+  it("accepts receipts with a cap discount (BR-18)", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await insertReceipt(tx, f, {
+          fullMinutes: 334,
+          subtotal: 11022,
+          capDiscount: 22,
+          roundingAdjustment: 0,
+          total: 11000,
+        });
+        await insertReceipt(tx, f, {
+          fullMinutes: 900,
+          subtotal: 29700,
+          capDiscount: 12760,
+          roundingAdjustment: 40,
+          total: 16900,
+        });
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  // While a deploy applies the migration, the previous version of the API still
+  // issues receipts without this column (ParkApp-Deploy): they get a discount of $0.
+  it("gives a receipt issued without the cap discount a discount of $0", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        const stayId = await insertStay(tx, f, CLOSED);
+        const [receipt] = await tx.$queryRawUnsafe<{ descuento_tope: number }[]>(
+          `INSERT INTO comprobante (estadia_id, minutos_completos, subtotal, ajuste_redondeo, total)
+           VALUES ($1, 6, 1380, 30, 1350) RETURNING descuento_tope`,
+          stayId,
+        );
+        expect(receipt!.descuento_tope).toBe(0);
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("rejects a receipt whose amounts do not add up (RI-12)", async () => {
     for (const values of [
       { fullMinutes: 37, subtotal: 8510, roundingAdjustment: 10, total: 8550 },
@@ -402,6 +529,15 @@ describe("receipt, audit and account constraints", () => {
       { fullMinutes: 6, subtotal: 1380, roundingAdjustment: -20, total: 1400 },
       { fullMinutes: -1, subtotal: 0, roundingAdjustment: 0, total: 0 },
       { fullMinutes: 1, subtotal: -50, roundingAdjustment: 0, total: -50 },
+      {
+        fullMinutes: 900,
+        subtotal: 29700,
+        capDiscount: 12760,
+        roundingAdjustment: 0,
+        total: 29700,
+      },
+      { fullMinutes: 10, subtotal: 330, capDiscount: 380, roundingAdjustment: 0, total: -50 },
+      { fullMinutes: 10, subtotal: 330, capDiscount: -20, roundingAdjustment: 0, total: 350 },
     ]) {
       await expect(scenario((tx, f) => insertReceipt(tx, f, values))).rejects.toThrow(
         /comprobante_valores_validos/,
