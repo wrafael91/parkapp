@@ -12,6 +12,7 @@ import { sendError } from "../../middleware/errors.js";
 import { recordAccessDenied } from "../accounts/access-denied.js";
 import { readSessionToken } from "../accounts/session-cookie.js";
 import { authenticate, type SessionUser } from "../accounts/session.service.js";
+import { setPeriodCap } from "./period-cap.js";
 import { setGracePeriod, setRate } from "./rate-settings.js";
 
 type Db = Prisma.TransactionClient;
@@ -34,6 +35,13 @@ const rateBody = z.object({
   valorMinuto: z.number(),
 });
 const gracePeriodBody = z.object({ minutos: z.number() });
+// setPeriodCap decides RI-20; the route only adds the upper limit of the value
+// (criterion 8 of #14), so a typo cannot set an absurd cap.
+const MAX_PERIOD_CAP_VALUE = 1_000_000;
+const periodCapBody = z.object({
+  horas: z.number(),
+  valor: z.number().max(MAX_PERIOD_CAP_VALUE),
+});
 
 // Matrix 1.2: only an administrator configures the rate and the grace period.
 // Without a session, 401 before anything else; an operator gets 403, and the
@@ -273,6 +281,41 @@ export function createPeriodCapRouter(prisma: PrismaClient): Router {
         return;
       case "found":
         res.status(200).json({ topePeriodo: toTopePeriodo(outcome.periodCap) });
+    }
+  });
+
+  // FR-23: turns the cap on or changes it with a new version. The stays inside
+  // keep their cap (BR-11).
+  router.post("/", async (req, res) => {
+    const body = periodCapBody.safeParse(req.body);
+    const now = new Date();
+    const outcome = await prisma.$transaction(async (db) => {
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
+      if (!body.success) return { kind: "invalid" } as const;
+      const result = await setPeriodCap(db, {
+        hours: body.data.horas,
+        value: body.data.valor,
+        now,
+        changedBy: { userId: access.user.id, ip: req.ip ?? "" },
+      });
+      if (!result.ok) return { kind: "invalid" } as const;
+      const periodCap = await db.periodCap.findUniqueOrThrow({ where: { id: result.periodCapId } });
+      return { kind: "created", periodCap } as const;
+    });
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
+        return;
+      case "invalid":
+        sendError(res, 400, "ENTRADA_INVALIDA", INVALID);
+        return;
+      case "created":
+        res.status(201).json({ topePeriodo: toTopePeriodo(outcome.periodCap) });
     }
   });
 
