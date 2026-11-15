@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71) |
-| Versión | 1.8 — 12 de noviembre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14) |
+| Versión | 1.9 — 14 de noviembre de 2026 |
 
 ## 1. Propósito
 
@@ -15,7 +15,7 @@ del servicio de parqueo en RoloPark. Cada regla tiene un identificador único
 ## 2. Actores
 
 - **Operador:** registra ingresos y salidas, y entrega el comprobante.
-- **Administrador:** configura tarifas y periodo de gracia; anula y corrige registros. No modifica los topes legales (BR-15).
+- **Administrador:** configura tarifas, periodo de gracia y tope por periodo; anula y corrige registros. No modifica los topes legales (BR-15).
 - **Cliente:** propietario o conductor del vehículo. No usa el sistema directamente.
 
 ## 3. Marco normativo
@@ -63,6 +63,7 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 | BR-06 | Solo se cobran minutos completos. Los segundos de un minuto no completado no se cobran. | Ver sección 6 |
 | BR-07 | El valor final se redondea al múltiplo de $50 inferior más cercano. | Decreto 652/2025, art. 200, par. 3 |
 | BR-08 | El administrador configura un periodo de gracia en minutos. Si la estadía no lo supera, el cobro es $0. Si lo supera, se cobran todos los minutos desde el ingreso. La comparación con el periodo de gracia se hace sobre los minutos completos (BR-06). | Decreto 652/2025, art. 200, par. 4 |
+| BR-18 | El administrador puede configurar un tope por periodo, igual para carros y motos: un periodo en horas (de 1 a 24) y un valor máximo por periodo. La estadía se divide en bloques del periodo contados desde el ingreso del vehículo, y cada bloque, completo o no, cobra sus minutos completos por la tarifa sin superar el tope. El periodo de gracia (BR-08) solo se aplica al principio de la estadía, y el redondeo (BR-07) se aplica al total. El tope puede estar desactivado, y cada cambio crea una versión nueva (BR-11). | Decreto 652/2025, art. 200, par. 4; retroalimentación de la Entrega 1 y `docs/diagnostico.md` (parqueadero B); ver sección 6 |
 
 ### 4.3 Tarifas
 
@@ -70,7 +71,7 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 |---|---|---|
 | BR-09 | La tarifa por minuto se configura por tipo de vehículo, con IVA incluido. | Decreto 652/2025, art. 200, par. 1 |
 | BR-10 | El sistema rechaza una tarifa mayor al tope legal vigente para su tipo de vehículo (ver BR-15). | Decreto 652/2025, art. 200, par. 1 |
-| BR-11 | Cada estadía se cobra con la tarifa y el periodo de gracia vigentes al momento del ingreso, guardados en el registro de la estadía. Ni las tarifas ni el periodo de gracia se editan: un cambio crea una versión nueva. | Decisión de diseño |
+| BR-11 | Cada estadía se cobra con la tarifa, el periodo de gracia y el tope por periodo vigentes al momento del ingreso, guardados en el registro de la estadía. Si al ingreso no había un tope vigente, la estadía se cobra sin tope. Ni las tarifas, ni el periodo de gracia, ni el tope se editan: un cambio crea una versión nueva. | Decisión de diseño |
 | BR-15 | El tope legal por tipo de vehículo y la condición de Sello Oro no se editan desde la aplicación. Los mantiene la plataforma mediante una migración versionada en el repositorio, cuyo commit cita el decreto que la origina. El administrador solo configura la tarifa del parqueadero, que no puede superar el tope. | Decreto 652/2025, art. 200, par. 1; segregación de funciones |
 
 ### 4.4 Integridad y trazabilidad
@@ -88,7 +89,7 @@ BR-17 responde a los errores de digitación: corregir una placa, un tipo de veh�
 
 | ID | Regla | Fuente |
 |---|---|---|
-| BR-14 | El comprobante muestra placa, fecha y hora de ingreso y salida, minutos cobrados, tarifa por minuto aplicada, ajuste por redondeo y total con IVA incluido. | Decreto 652/2025, art. 200, par. 1 |
+| BR-14 | El comprobante muestra placa, fecha y hora de ingreso y salida, minutos cobrados, tarifa por minuto aplicada, el tope por periodo y su descuento si se aplicó (BR-18), ajuste por redondeo y total con IVA incluido. | Decreto 652/2025, art. 200, par. 1 |
 
 ## 5. Ejemplos de cálculo
 
@@ -104,6 +105,22 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
 | 5 | Moto, 45 min | 45 | $7.245 | $7.200 | BR-07 |
 | 6 | Carro, 59 min 59 s | 59 | $13.570 | $13.550 | BR-06, BR-07 |
 
+Con el esquema del parqueadero B: tarifa de $33 por minuto, tope de $11.000
+cada 12 horas y periodo de gracia de 5 minutos. Estos ejemplos se convierten en
+casos de prueba en S3-04. El descuento por tope es la diferencia entre el
+subtotal y lo que cobran los bloques; el total es el subtotal menos el
+descuento, redondeado (BR-07).
+
+| Caso | Estadía | Minutos completos | Subtotal | Descuento por tope | Total | Reglas |
+|---|---|---|---|---|---|---|
+| 7 | 3 min | 3 | $0 | $0 | $0 | BR-08 |
+| 8 | 5 h 33 min | 333 | $10.989 | $0 | $10.950 | BR-07 (el tope todavía no se alcanza) |
+| 9 | 5 h 34 min | 334 | $11.022 | $22 | $11.000 | BR-18 |
+| 10 | 12 h 1 min | 721 | $23.793 | $12.760 | $11.000 | BR-07, BR-18 (empieza el segundo bloque) |
+| 11 | 12 h 3 min | 723 | $23.859 | $12.760 | $11.050 | BR-08, BR-18 (la gracia no se repite en el segundo bloque) |
+| 12 | 15 h | 900 | $29.700 | $12.760 | $16.900 | BR-07, BR-18 ($11.000 + $5.940 = $16.940) |
+| 13 | 30 h | 1.800 | $59.400 | $26.400 | $33.000 | BR-18 (tres bloques; el último, parcial, también llega al tope) |
+
 ## 6. Supuestos e interpretaciones
 
 - **BR-06:** la norma no regula los segundos. Se cobra solo el minuto completo por 
@@ -114,13 +131,25 @@ Con tarifa de $230 por minuto para carro, $161 para moto y periodo de gracia de
   pero no regula el periodo de gracia. Se adopta la práctica común: la gracia
   funciona como umbral, no como descuento. Por coherencia con BR-06, el umbral
   se compara contra los minutos completos.
+- **BR-18:** la norma permite esquemas más económicos que el cobro por minuto,
+  pero no dice cómo se cuentan los periodos. Los bloques se cuentan desde el
+  ingreso de cada vehículo, no por el horario del reloj ni por día calendario:
+  así, un carro que entra a las 7 p. m. no paga un segundo tope a medianoche.
+  Como cada bloque cobra a lo sumo sus minutos, el cobro nunca supera el de la
+  tarifa por minuto, y por eso el tope no se compara con el tope legal. El
+  parqueadero B cobra por turnos fijos, y su turno de noche (de 6 p. m. a
+  7 a. m.) dura 13 horas: con un periodo de 13 horas, una estadía de hasta 13
+  horas paga como máximo el valor de un turno. La diferencia es que en B una
+  estadía que cruza el cambio de turno paga dos turnos, y en RoloPark solo
+  cuando pasa del periodo. Es una interpretación nuestra, que se valida con B en
+  la visita (`docs/diagnostico.md`, sección 6).
 
 ## 7. Fuera de alcance
 
 | Elemento | Razón |
 |---|---|
 | Bicicletas | No tienen placa, que es el identificador del registro. |
-| Tope diario | Es legal y favorece al usuario, pero se pospone para priorizar un incremento funcional. Queda en el backlog del producto. |
+| Turnos fijos por horario del reloj (por ejemplo, de 6 p. m. a 7 a. m., con su propio valor) | El tope por periodo (BR-18) cuenta los bloques desde el ingreso. Los turnos por reloj quedan en el backlog del producto hasta validarlos con el parqueadero B en la visita. |
 | Mensualidades y convenios | No hacen parte del alcance del trabajo de grado. |
 | Factura electrónica (DIAN) y desglose de IVA | RoloPark emite un comprobante de pago, no una factura electrónica. |
 | Reporte al Registro Distrital de Estacionamientos | Obligación administrativa del operador. |
@@ -140,6 +169,8 @@ el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 | Tarifa | `rate` |
 | Tope legal | `legalCap` |
 | Periodo de gracia | `gracePeriod` |
+| Tope por periodo | `periodCap` |
+| Descuento por tope | `capDiscount` |
 | Comprobante de pago | `receipt` |
 | Anulación | `void` |
 | Usuario | `user` |
@@ -200,3 +231,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.6 | 22 de octubre de 2026 | FSC se define con su nombre oficial (factor por la estrategia de sellos de calidad de cicloparqueaderos). Glosario: corrección y reemplazo con el mismo formato de las demás filas. |
 | 1.7 | 22 de octubre de 2026 | Actores: el administrador ya no figura como quien configura los topes legales, que contradecía BR-15; se agrega que corrige registros (BR-17). |
 | 1.8 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Los ejemplos de la sección 5 citan la tarea que los convirtió en pruebas, S2-09 (antes S1-08). (#71) |
+| 1.9 | 14 de noviembre de 2026 | BR-18: tope por periodo configurable, con los bloques contados desde el ingreso. BR-11 incluye el tope y BR-14 su descuento. Ejemplos 7 a 13 con el esquema del parqueadero B y supuesto de BR-18 en la sección 6. El tope diario sale de la sección 7 y entran los turnos fijos por reloj. Actores y glosario con el tope. (#14) |
