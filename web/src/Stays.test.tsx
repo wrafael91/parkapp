@@ -151,6 +151,63 @@ describe("entry", () => {
   });
 });
 
+// A third vehicle whose plate has nothing in common with the other two.
+const VAN = {
+  id: 9,
+  placa: "XYZ789",
+  tipoVehiculo: "CARRO",
+  color: "Blanco",
+  marca: "Renault",
+  horaIngreso: "2026-11-11T02:20:00.000Z",
+};
+const THREE = { estadias: [MOTORCYCLE, CAR, VAN] };
+
+async function search(user: UserEvent, text: string) {
+  await user.type(await screen.findByLabelText("Buscar por placa"), text);
+}
+
+describe("search by plate", () => {
+  it.each([
+    ["the whole plate in lowercase", "abc123", ["ABC123"]],
+    ["the plate with a hyphen", "ABC-123", ["ABC123"]],
+    ["part of the plate with a space", "bc 1", ["ABC12D", "ABC123"]],
+    ["the end of a motorcycle plate", "12d", ["ABC12D"]],
+    ["only spaces and hyphens", " - ", ["ABC12D", "ABC123", "XYZ789"]],
+  ])("filters the list by %s (FR-08, FR-11)", async (_case, text, expected) => {
+    stubFetch(jsonResponse(200, THREE));
+    const user = userEvent.setup();
+    renderStays();
+    await search(user, text);
+    expect(rows().map((cells) => cells[0])).toEqual(expected);
+  });
+
+  it("filters the list on screen without asking the API again", async () => {
+    const fetchMock = stubFetch(jsonResponse(200, THREE));
+    const user = userEvent.setup();
+    renderStays();
+    await search(user, "xyz");
+    expect(rows().map((cells) => cells[0])).toEqual(["XYZ789"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a new entry that matches the search", async () => {
+    stubFetch(jsonResponse(200, { estadias: [CAR, VAN] }), jsonResponse(201, MOTORCYCLE));
+    const user = userEvent.setup();
+    renderStays();
+    await search(user, "abc");
+    await registerEntry(user, MOTORCYCLE_ENTRY);
+    await screen.findByText("ABC12D");
+    expect(rows().map((cells) => cells[0])).toEqual(["ABC12D", "ABC123"]);
+  });
+
+  it("has no search field when there are no vehicles inside", async () => {
+    stubFetch(jsonResponse(200, NO_STAYS));
+    renderStays();
+    await screen.findByText("No hay vehículos dentro.");
+    expect(screen.queryByLabelText("Buscar por placa")).toBeNull();
+  });
+});
+
 describe("rejected entry", () => {
   it.each([
     [

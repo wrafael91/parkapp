@@ -278,6 +278,22 @@ describe("receipt", () => {
   });
 });
 
+describe("exit from a search", () => {
+  // BR-13: a lost ticket. The operator finds the vehicle by plate and goes
+  // through the same exit (BR-04).
+  it("registers the exit from a filtered row and keeps the search", async () => {
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const user = userEvent.setup();
+    renderStays();
+    await user.type(await screen.findByLabelText("Buscar por placa"), "abc");
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await user.click(await screen.findByRole("button", { name: "Cerrar" }));
+    expect(plates()).toEqual(["ABC12D"]);
+    expect((screen.getByLabelText("Buscar por placa") as HTMLInputElement).value).toBe("abc");
+  });
+});
+
 describe("rejected exit", () => {
   it.each([
     [
