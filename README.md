@@ -112,3 +112,5 @@ unset RP_DB
 - `<grace>`: whole minutes, 0 or more (BR-08).
 
 Each run creates a new version of the three values and closes the current ones; vehicles already inside keep the values they entered with (BR-11). If one value is rejected, nothing changes. Each change is recorded in the audit log as `TARIFA_CAMBIADA` or `PERIODO_GRACIA_CAMBIADO`.
+
+The fee cap per period (BR-18) has no bootstrap script: an administrator turns it on, changes it or turns it off from the Rates screen. Until then, stays are charged by the minute.
