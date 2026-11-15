@@ -107,9 +107,23 @@ describe("registerExit (FR-12, FR-13, FR-14, RI-11)", () => {
         exitTime: exit,
         valuePerMinute: 230,
         gracePeriodMinutes: 5,
+        periodCap: null,
       });
-      expect(fee).toEqual({ fullMinutes: 37, subtotal: 8510, roundingAdjustment: 10, total: 8500 });
-      expect(receipt).toMatchObject({ stayId, ...fee });
+      expect(fee).toEqual({
+        fullMinutes: 37,
+        subtotal: 8510,
+        capDiscount: 0,
+        roundingAdjustment: 10,
+        total: 8500,
+      });
+      // The cap discount has no column yet (#14): with no cap it is always 0.
+      expect(receipt).toMatchObject({
+        stayId,
+        fullMinutes: 37,
+        subtotal: 8510,
+        roundingAdjustment: 10,
+        total: 8500,
+      });
       const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
       expect(stay).toMatchObject({ status: "CLOSED", exitTime: exit, exitById: userId });
     });
