@@ -12,7 +12,7 @@ import { sendError } from "../../middleware/errors.js";
 import { recordAccessDenied } from "../accounts/access-denied.js";
 import { readSessionToken } from "../accounts/session-cookie.js";
 import { authenticate, type SessionUser } from "../accounts/session.service.js";
-import { setPeriodCap } from "./period-cap.js";
+import { deactivatePeriodCap, setPeriodCap } from "./period-cap.js";
 import { setGracePeriod, setRate } from "./rate-settings.js";
 
 type Db = Prisma.TransactionClient;
@@ -35,13 +35,14 @@ const rateBody = z.object({
   valorMinuto: z.number(),
 });
 const gracePeriodBody = z.object({ minutos: z.number() });
-// setPeriodCap decides RI-20; the route only adds the upper limit of the value
-// (criterion 8 of #14), so a typo cannot set an absurd cap.
+// { horas, valor } turns the cap on or changes it, and { activo: false } turns it
+// off (ADR 0008). setPeriodCap decides RI-20; the route only adds the upper limit
+// of the value (criterion 8 of #14), so a typo cannot set an absurd cap.
 const MAX_PERIOD_CAP_VALUE = 1_000_000;
-const periodCapBody = z.object({
-  horas: z.number(),
-  valor: z.number().max(MAX_PERIOD_CAP_VALUE),
-});
+const periodCapBody = z.union([
+  z.object({ activo: z.literal(false) }),
+  z.object({ horas: z.number(), valor: z.number().max(MAX_PERIOD_CAP_VALUE) }),
+]);
 
 // Matrix 1.2: only an administrator configures the rate and the grace period.
 // Without a session, 401 before anything else; an operator gets 403, and the
@@ -284,8 +285,8 @@ export function createPeriodCapRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // FR-23: turns the cap on or changes it with a new version. The stays inside
-  // keep their cap (BR-11).
+  // FR-23: turns the cap on or changes it (a new version), or turns it off (the
+  // version in force is closed). The stays inside keep their cap (BR-11).
   router.post("/", async (req, res) => {
     const body = periodCapBody.safeParse(req.body);
     const now = new Date();
@@ -293,11 +294,16 @@ export function createPeriodCapRouter(prisma: PrismaClient): Router {
       const access = await authorizeAdministrator(db, req, now);
       if (access.kind !== "allowed") return access;
       if (!body.success) return { kind: "invalid" } as const;
+      const changedBy = { userId: access.user.id, ip: req.ip ?? "" };
+      if ("activo" in body.data) {
+        const result = await deactivatePeriodCap(db, { now, changedBy });
+        return result.ok ? ({ kind: "deactivated" } as const) : ({ kind: "noPeriodCap" } as const);
+      }
       const result = await setPeriodCap(db, {
         hours: body.data.horas,
         value: body.data.valor,
         now,
-        changedBy: { userId: access.user.id, ip: req.ip ?? "" },
+        changedBy,
       });
       if (!result.ok) return { kind: "invalid" } as const;
       const periodCap = await db.periodCap.findUniqueOrThrow({ where: { id: result.periodCapId } });
@@ -313,6 +319,12 @@ export function createPeriodCapRouter(prisma: PrismaClient): Router {
         return;
       case "invalid":
         sendError(res, 400, "ENTRADA_INVALIDA", INVALID);
+        return;
+      case "noPeriodCap":
+        sendError(res, 409, "SIN_TOPE_PERIODO", "No hay un tope por periodo activo.");
+        return;
+      case "deactivated":
+        res.status(200).json({ topePeriodo: null });
         return;
       case "created":
         res.status(201).json({ topePeriodo: toTopePeriodo(outcome.periodCap) });
