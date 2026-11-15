@@ -126,12 +126,21 @@ describe("calculateFee: invalid input", () => {
   it.each([-1, 2.5, Number.NaN])("rejects a grace period of %s minutes (RI-10)", (grace) => {
     expect(() => feeFor(after(10), CAR_RATE, grace)).toThrow(RangeError);
   });
+
+  it.each([0, 25, 2.5, Number.NaN])("rejects a cap period of %s hours (RI-20)", (hours) => {
+    expect(() => feeFor(after(10), LOT_B_RATE, GRACE_MINUTES, { hours, value: 11_000 })).toThrow(RangeError);
+  });
+
+  it.each([0, -11_000, 11_000.5, Number.NaN])("rejects a cap value of %s (RI-20)", (value) => {
+    expect(() => feeFor(after(10), LOT_B_RATE, GRACE_MINUTES, { hours: 12, value })).toThrow(RangeError);
+  });
 });
 
-// RI-12 (docs/modelo-datos.md) becomes a CHECK on `comprobante` in S1-05 (Sprint 3).
-// Until then, this test guards it for every stay of up to one day, with the 2026
-// legal maximums for cars and motorcycles, without and with Sello Oro
-// (docs/reglas-de-negocio.md, section 3).
+// RI-12 (docs/modelo-datos.md) is also a CHECK on `comprobante` since S3-03 (#6).
+// These tests guard it in the calculation: for every stay of up to one day with
+// the 2026 legal maximums for cars and motorcycles, without and with Sello Oro
+// (docs/reglas-de-negocio.md, section 3), and for every stay of up to two days
+// with a cap of the shortest and the longest period and lot B's (BR-18).
 describe("calculateFee: receipt integrity (RI-12)", () => {
   it("keeps total = subtotal - adjustment, an adjustment of $0 to $49 and a multiple of $50 for every minute of a day", () => {
     for (const rate of [CAR_RATE, MOTORCYCLE_RATE, 253, 177]) {
@@ -142,6 +151,25 @@ describe("calculateFee: receipt integrity (RI-12)", () => {
         expect(roundingAdjustment, stay).toBeGreaterThanOrEqual(0);
         expect(roundingAdjustment, stay).toBeLessThanOrEqual(49);
         expect(total % 50, stay).toBe(0);
+      }
+    }
+  });
+
+  it("keeps total = subtotal - cap discount - adjustment, a discount of $0 to the subtotal and a multiple of $50 with a cap, for every minute of two days", () => {
+    const caps = [{ hours: 1, value: 1030 }, LOT_B_CAP, { hours: 24, value: 50_000 }];
+    for (const rate of [LOT_B_RATE, CAR_RATE, MOTORCYCLE_RATE]) {
+      for (const periodCap of caps) {
+        for (let minutes = 0; minutes <= 2 * 24 * 60; minutes++) {
+          const fee = feeFor(after(minutes), rate, GRACE_MINUTES, periodCap);
+          const { subtotal, capDiscount, roundingAdjustment, total } = fee;
+          const stay = `rate ${rate}, cap ${periodCap.value} every ${periodCap.hours} h, ${minutes} min`;
+          expect(total, stay).toBe(subtotal - capDiscount - roundingAdjustment);
+          expect(capDiscount, stay).toBeGreaterThanOrEqual(0);
+          expect(capDiscount, stay).toBeLessThanOrEqual(subtotal);
+          expect(roundingAdjustment, stay).toBeGreaterThanOrEqual(0);
+          expect(roundingAdjustment, stay).toBeLessThanOrEqual(49);
+          expect(total % 50, stay).toBe(0);
+        }
       }
     }
   });
