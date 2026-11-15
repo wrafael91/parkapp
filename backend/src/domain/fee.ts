@@ -1,4 +1,5 @@
 const MS_PER_MINUTE = 60_000;
+const MINUTES_PER_HOUR = 60;
 // BR-07: the total is rounded down to a multiple of this many pesos.
 const ROUNDING_STEP = 50;
 
@@ -46,7 +47,8 @@ export function calculateFee(input: FeeInput): Fee {
   // BR-05: every full minute at the rate, with no minimum stay.
   const subtotal = fullMinutes * valuePerMinute;
   // BR-18: the cap lowers what is charged; the subtotal stays minutes x rate.
-  const charged = periodCap === null ? subtotal : Math.min(subtotal, periodCap.value);
+  const charged =
+    periodCap === null ? subtotal : chargeByPeriod(fullMinutes, valuePerMinute, periodCap);
   const capDiscount = subtotal - charged;
   // BR-07: round down to a multiple of $50, so the adjustment is $0 to $49 (RI-12).
   const roundingAdjustment = charged % ROUNDING_STEP;
@@ -57,6 +59,18 @@ export function calculateFee(input: FeeInput): Fee {
     roundingAdjustment,
     total: charged - roundingAdjustment,
   };
+}
+
+// BR-18: the stay is split into blocks of the period counted from entry, not by
+// the clock, so each vehicle has its own blocks. Each block, full or partial,
+// charges its full minutes at the rate up to the cap. Grace (BR-08) and rounding
+// (BR-07) are not applied per block: the caller does it once, for the stay.
+function chargeByPeriod(fullMinutes: number, valuePerMinute: number, cap: PeriodCap): number {
+  const periodMinutes = cap.hours * MINUTES_PER_HOUR;
+  const fullBlocks = Math.floor(fullMinutes / periodMinutes);
+  const lastBlockMinutes = fullMinutes % periodMinutes;
+  const blockCharge = (minutes: number) => Math.min(minutes * valuePerMinute, cap.value);
+  return fullBlocks * blockCharge(periodMinutes) + blockCharge(lastBlockMinutes);
 }
 
 // RI-05, RI-09 and RI-10 become database CHECK constraints in S1-05 (Sprint 3).
