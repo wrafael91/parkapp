@@ -18,20 +18,20 @@ export type RegisterExitResult =
 export async function registerExit(db: Db, input: RegisterExitInput): Promise<RegisterExitResult> {
   const stay = await db.stay.findUnique({
     where: { id: input.stayId },
-    include: { rate: true, gracePeriod: true },
+    include: { rate: true, gracePeriod: true, periodCap: true },
   });
   if (stay === null) {
     return { ok: false, reason: "notFound" };
   }
-  // BR-11: the rate and the grace period stored with the stay, the ones in
-  // force at entry. The fee is calculated before writing: a RangeError leaves
-  // the stay active and issues no receipt. No stay stores a cap yet (#14).
+  // BR-11: the rate, the grace period and the cap stored with the stay, the ones
+  // in force at entry (no cap if none was). The fee is calculated before writing:
+  // a RangeError leaves the stay active and issues no receipt.
   const fee = calculateFee({
     entryTime: stay.entryTime,
     exitTime: input.now,
     valuePerMinute: stay.rate.valuePerMinute,
     gracePeriodMinutes: stay.gracePeriod.minutes,
-    periodCap: null,
+    periodCap: stay.periodCap,
   });
   // RI-04: only an active stay is closed; a closed or voided one keeps its data.
   // The condition also makes two simultaneous exits of the same stay close it
@@ -44,17 +44,9 @@ export async function registerExit(db: Db, input: RegisterExitInput): Promise<Re
     return { ok: false, reason: "notActive" };
   }
   // RI-11 and RI-12: one receipt per exit, in the same transaction, with the
-  // results of the calculation as they are (data model, decision 5). The cap
-  // discount has no column yet (#14); with no cap it is always 0.
-  const receipt = await db.receipt.create({
-    data: {
-      stayId: stay.id,
-      fullMinutes: fee.fullMinutes,
-      subtotal: fee.subtotal,
-      roundingAdjustment: fee.roundingAdjustment,
-      total: fee.total,
-    },
-  });
+  // results of the calculation as they are, the cap discount included (data
+  // model, decision 5).
+  const receipt = await db.receipt.create({ data: { stayId: stay.id, ...fee } });
   await db.auditEvent.create({
     data: {
       action: "EXIT_REGISTERED",

@@ -48,7 +48,7 @@ export async function registerEntry(
     });
     return { ok: false, reason: "plateActive" };
   }
-  // BR-11 and RI-06: the stay keeps the rate and the grace period in force now.
+  // BR-11 and RI-06: the stay keeps the rate, the grace period and the cap in force now.
   const current = {
     validFrom: { lte: input.now },
     OR: [{ validTo: null }, { validTo: { gt: input.now } }],
@@ -57,6 +57,8 @@ export async function registerEntry(
     where: { vehicleType: input.vehicleType, ...current },
   });
   const gracePeriod = await db.gracePeriod.findFirstOrThrow({ where: current });
+  // BR-18: the cap may be off. Then the stay keeps no cap and is charged by the minute.
+  const periodCap = await db.periodCap.findFirst({ where: current });
   const stay = await db.stay.create({
     data: {
       plate,
@@ -67,6 +69,7 @@ export async function registerEntry(
       entryById: input.userId,
       rateId: rate.id,
       gracePeriodId: gracePeriod.id,
+      periodCapId: periodCap?.id ?? null,
     },
   });
   await db.auditEvent.create({

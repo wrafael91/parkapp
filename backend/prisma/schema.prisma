@@ -1,5 +1,5 @@
 // ParkApp — modelo físico de datos.
-// Diseño lógico y reglas de integridad (RI-01 a RI-19): docs/modelo-datos.md
+// Diseño lógico y reglas de integridad (RI-01 a RI-20): docs/modelo-datos.md
 
 generator client {
   provider = "prisma-client"
@@ -43,6 +43,7 @@ enum AuditAction {
   STAY_CORRECTED              @map("ESTADIA_CORREGIDA")
   RATE_CHANGED                @map("TARIFA_CAMBIADA")
   GRACE_PERIOD_CHANGED        @map("PERIODO_GRACIA_CAMBIADO")
+  PERIOD_CAP_CHANGED          @map("TOPE_PERIODO_CAMBIADO")
   ACCOUNT_CREATED             @map("CUENTA_CREADA")
   ACCOUNT_DEACTIVATED         @map("CUENTA_DESACTIVADA")
   ACCOUNT_REACTIVATED         @map("CUENTA_REACTIVADA")
@@ -66,6 +67,7 @@ model User {
   sessions            Session[]
   ratesCreated        Rate[]
   gracePeriodsCreated GracePeriod[]
+  periodCapsCreated   PeriodCap[]
   staysEntered        Stay[]        @relation("StayEntryBy")
   staysExited         Stay[]        @relation("StayExitBy")
   staysVoided         Stay[]        @relation("StayVoidedBy")
@@ -136,6 +138,22 @@ model GracePeriod {
   @@map("periodo_gracia")
 }
 
+// BR-18: the same cap for cars and motorcycles. No current version means no cap.
+model PeriodCap {
+  id          Int       @id @default(autoincrement())
+  hours       Int       @map("horas")
+  value       Int       @map("valor")
+  validFrom   DateTime  @default(now()) @map("vigente_desde") @db.Timestamptz(3)
+  validTo     DateTime? @map("vigente_hasta") @db.Timestamptz(3)
+  createdById Int       @map("creado_por_id")
+
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  stays     Stay[]
+
+  @@index([createdById])
+  @@map("tope_periodo")
+}
+
 model Stay {
   id            Int         @id @default(autoincrement())
   plate         String      @map("placa")
@@ -147,6 +165,7 @@ model Stay {
   entryById     Int         @map("ingreso_por_id")
   rateId        Int         @map("tarifa_id")
   gracePeriodId Int         @map("periodo_gracia_id")
+  periodCapId   Int?        @map("tope_periodo_id")
   exitTime      DateTime?   @map("hora_salida") @db.Timestamptz(3)
   exitById      Int?        @map("salida_por_id")
   voidedAt      DateTime?   @map("anulada_en") @db.Timestamptz(3)
@@ -159,6 +178,7 @@ model Stay {
   voidedBy    User?       @relation("StayVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   rate        Rate        @relation(fields: [rateId], references: [id], onDelete: Restrict)
   gracePeriod GracePeriod @relation(fields: [gracePeriodId], references: [id], onDelete: Restrict)
+  periodCap   PeriodCap?  @relation(fields: [periodCapId], references: [id], onDelete: Restrict)
   receipt     Receipt?
   replaces    Stay?       @relation("StayReplacement", fields: [replacesId], references: [id], onDelete: Restrict)
   replacedBy  Stay?       @relation("StayReplacement")
@@ -168,6 +188,7 @@ model Stay {
   @@index([voidedById])
   @@index([rateId])
   @@index([gracePeriodId])
+  @@index([periodCapId])
   @@map("estadia")
 }
 
@@ -177,6 +198,7 @@ model Receipt {
   stayId             Int @unique @map("estadia_id")
   fullMinutes        Int @map("minutos_completos")
   subtotal           Int
+  capDiscount        Int @default(0) @map("descuento_tope")
   roundingAdjustment Int @map("ajuste_redondeo")
   total              Int
 
