@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45) |
-| Versión | 1.7 — 14 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14) |
+| Versión | 1.8 — 15 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -16,7 +16,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Actor | Descripción | Usa la aplicación |
 |---|---|---|
 | Operador | Registra ingresos y salidas, y entrega el comprobante de pago. | Sí |
-| Administrador | Configura la tarifa y el periodo de gracia, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
+| Administrador | Configura la tarifa, el periodo de gracia y el tope por periodo, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
 | Cliente | Propietario o conductor del vehículo. Recibe el comprobante. | No |
 | Mantenedor de la plataforma | Actualiza el tope legal y la condición de Sello Oro mediante migraciones versionadas en el repositorio (BR-15). | No |
 
@@ -33,6 +33,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Corregir una estadía por reemplazo | No | Sí | BR-12, BR-16, BR-17 |
 | Configurar la tarifa por tipo de vehículo | ✗ | ✓ | BR-09, BR-10, BR-11 |
 | Configurar el periodo de gracia | ✗ | ✓ | BR-08, BR-11 |
+| Configurar el tope por periodo | ✗ | ✓ | BR-11, BR-18 |
 | Crear y desactivar cuentas de operador | ✗ | ✓ | — |
 | Consultar el historial de estadías y comprobantes | ✗ | ✓ | — |
 | Consultar la bitácora de auditoría | ✗ | ✓ | BR-12 |
@@ -91,7 +92,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 | ID | Requisito | Actor | Origen |
 |---|---|---|---|
 | FR-12 | Al registrar la salida, el sistema muestra los datos del ingreso para que el operador los verifique antes de confirmar. | Ambos | BR-04 |
-| FR-13 | El sistema calcula el cobro con la tarifa y el periodo de gracia vigentes al momento del ingreso, sobre minutos completos y redondeado al múltiplo de $50 inferior. La hora de salida la asigna el servidor. | Ambos | BR-05 a BR-08, BR-11, BR-16 |
+| FR-13 | El sistema calcula el cobro con la tarifa, el periodo de gracia y el tope por periodo vigentes al momento del ingreso, sobre minutos completos y redondeado al múltiplo de $50 inferior. La hora de salida la asigna el servidor. | Ambos | BR-05 a BR-08, BR-11, BR-16, BR-18 |
 | FR-14 | El sistema emite el comprobante de pago con los datos de BR-14, visible e imprimible desde el navegador. | Ambos | BR-14 |
 
 ### 2.4 Anulaciones y correcciones
@@ -108,6 +109,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 |---|---|---|---|
 | FR-16 | El administrador configura la tarifa por minuto de cada tipo de vehículo, viendo el tope legal vigente. El sistema rechaza una tarifa mayor al tope, y cada cambio crea una versión nueva. | Administrador | BR-09, BR-10, BR-11, BR-15 |
 | FR-17 | El administrador configura el periodo de gracia en minutos. Cada cambio crea una versión nueva. | Administrador | BR-08, BR-11 |
+| FR-23 | El administrador activa, cambia o desactiva el tope por periodo: un periodo de 1 a 24 horas y un valor máximo por periodo, igual para carros y motos. Activarlo o cambiarlo crea una versión nueva; desactivarlo cierra la vigente sin crear otra. Los vehículos que ya están dentro conservan el tope con el que entraron. | Administrador | BR-11, BR-18 |
 
 ### 2.6 Consultas y auditoría
 
@@ -203,6 +205,7 @@ Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3
 | US-13 | Consultar el historial | FR-18 | Should | 3 |
 | US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
 | US-15 | Ver el resumen de recaudo | FR-20 | Should | 3 |
+| US-16 | Configurar el tope por periodo | FR-23 | Must | 3 |
 
 ### 4.2 Historias y criterios de aceptación
 
@@ -277,13 +280,14 @@ cobro **para** no hacer cálculos a mano.
 - **Dado** un carro con tarifa de $230 y gracia de 5 minutos que estuvo 37 min 50 s, **cuando** confirmo la salida, **entonces** el cobro es $8.500 (caso 4 de las reglas de negocio).
 - **Dado** una moto que estuvo 3 minutos, **cuando** confirmo la salida, **entonces** el cobro es $0 (caso 1).
 - **Dado** que la tarifa cambió mientras el vehículo estaba dentro, **cuando** confirmo la salida, **entonces** se cobra con la tarifa vigente al ingreso (BR-11).
+- **Dado** una tarifa de $33, un tope de $11.000 cada 12 horas y una estadía de 15 horas, **cuando** confirmo la salida, **entonces** el cobro es $16.900 (caso 12 de las reglas de negocio, BR-18).
 
 #### US-09 Emitir el comprobante de pago
 
 **Como** operador, **quiero** entregar un comprobante **para** que el cliente
 tenga constancia de lo que pagó.
 
-- **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra su número consecutivo, placa, ingreso, salida, minutos cobrados, tarifa aplicada, ajuste por redondeo y total (BR-14).
+- **Dado** una salida confirmada, **cuando** se emite el comprobante, **entonces** muestra su número consecutivo, placa, ingreso, salida, minutos cobrados, tarifa aplicada, el tope por periodo y su descuento si se aplicó, ajuste por redondeo y total (BR-14).
 - **Dado** un comprobante en pantalla, **cuando** lo imprimo desde el navegador, **entonces** sale completo en una página.
 
 #### US-10 Anular o corregir una estadía
@@ -339,6 +343,18 @@ cuadrar caja con lo que entrega cada operador.
 - **Dado** comprobantes de varios operadores en un día, **cuando** abro el resumen, **entonces** veo el total por operador y el total del día.
 - **Dado** un comprobante anulado, **cuando** se calcula el resumen, **entonces** no se suma.
 
+#### US-16 Configurar el tope por periodo
+
+**Como** administrador, **quiero** configurar un valor máximo por periodo de
+horas **para** cobrar las estadías largas como lo hace mi parqueadero, sin
+dejar de cobrar por minuto.
+
+- **Dado** que no hay un tope vigente, **cuando** configuro 12 horas y $11.000, **entonces** se crea una versión vigente desde ese momento, y el cambio queda en la bitácora con mi usuario y mi IP.
+- **Dado** un tope vigente, **cuando** lo cambio a 13 horas, **entonces** la versión anterior se cierra y se conserva sin cambios (BR-11).
+- **Dado** un tope vigente, **cuando** lo desactivo, **entonces** los ingresos posteriores se cobran sin tope, y los vehículos que ya están dentro conservan el suyo (BR-11).
+- **Dado** un periodo de 0 o de 25 horas, o un valor de $0, **cuando** lo guardo, **entonces** se rechaza y no cambia nada.
+- **Dado** que soy operador, **cuando** intento consultar o cambiar el tope, **entonces** la API responde 403.
+
 ## 5. Matriz de trazabilidad
 
 ### 5.1 Objetivos específicos
@@ -346,7 +362,7 @@ cuadrar caja con lo que entrega cada operador.
 | Objetivo específico | Se cumple con | Requisitos relacionados |
 |---|---|---|
 | OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos y arquitectura (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
-| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-22; NFR-01 a NFR-08, NFR-20 |
+| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-23; NFR-01 a NFR-08, NFR-20 |
 | OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 2) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
 | OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
 
@@ -366,7 +382,7 @@ cuadrar caja con lo que entrega cada operador.
 | FR-10 | Necesidad operativa | US-07 |
 | FR-11 | BR-13 | US-07 |
 | FR-12 | BR-04 | US-08 |
-| FR-13 | BR-05, BR-06, BR-07, BR-08, BR-11, BR-16 | US-08 |
+| FR-13 | BR-05, BR-06, BR-07, BR-08, BR-11, BR-16, BR-18 | US-08 |
 | FR-14 | BR-14 | US-09 |
 | FR-15 | BR-12, BR-16 | US-10 |
 | FR-16 | BR-09, BR-10, BR-11, BR-15 | US-11 |
@@ -376,9 +392,10 @@ cuadrar caja con lo que entrega cada operador.
 | FR-20 | Sección 1.3 | US-15 |
 | FR-21 | BR-11, BR-12, BR-16, BR-17 | US-10 |
 | FR-22 | BR-12, BR-16, BR-17 | US-10 |
+| FR-23 | BR-11, BR-18 | US-16 |
 
-Cobertura: las 17 reglas de negocio (BR-01 a BR-16) aparecen en al menos un
-requisito funcional, y los 22 requisitos funcionales tienen al menos una
+Cobertura: las 18 reglas de negocio (BR-01 a BR-18) aparecen en al menos un
+requisito funcional, y los 23 requisitos funcionales tienen al menos una
 historia de usuario. En el Sprint 2 se agrega una columna con las pruebas que
 verifican cada requisito.
 
@@ -392,7 +409,7 @@ la Entrega 2 (`docs/diagnostico.md`, sección 6).
 | Origen | Requisitos y decisiones | Validación |
 |---|---|---|
 | Norma verificada | Cobro por minuto y sin permanencia mínima (BR-05), redondeo al múltiplo de $50 inferior (BR-07), tarifa con IVA por tipo de vehículo (BR-09), tope legal (BR-10, BR-15) y contenido del comprobante (BR-14) | Contrastados con el Decreto 652 de 2025 y el Decreto 026 de 2026 (`docs/reglas-de-negocio.md`, sección 3) |
-| Observado en el diagnóstico | Verificación de la placa a la salida (BR-04, parqueadero A), tiquete perdido sin recargo (BR-13, B), comprobante con las dos horas (BR-14, A y B), tope por periodo (#14; B, C y D) y operación sin conexión (#54, D) | Se confirman en la visita |
+| Observado en el diagnóstico | Verificación de la placa a la salida (BR-04, parqueadero A), tiquete perdido sin recargo (BR-13, B), comprobante con las dos horas (BR-14, A y B), tope por periodo (BR-18 y FR-23; B, C y D) y operación sin conexión (#54, D) | Se confirman en la visita |
 | Revisado con la asesora | Alcance de la Entrega 2 y flujo mínimo que debe funcionar para la Semana TIC: iniciar sesión, registrar un ingreso, ver los vehículos dentro, registrar la salida, cobrar y emitir el comprobante | Reunión del 7 de noviembre de 2026; flujo en producción desde el 11 de noviembre (S2-12) |
 | Propuesta del estudiante | Solo minutos completos (BR-06), alerta de posible placa clonada (BR-03), periodo de gracia (BR-08), versiones de tarifa y gracia (BR-11), anulación sin borrado (BR-12), horas asignadas por el servidor (BR-16) y corrección por reemplazo (BR-17) | Pendientes de validar en la visita |
 
@@ -422,3 +439,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.5 | 30 de octubre de 2026 | Replaneación del Sprint 2 del 26 de octubre, según la capacidad medida: US-11, NFR-03, NFR-08 y NFR-22 pasan al Sprint 3, y US-07, NFR-02 y NFR-05 se completan en el Sprint 3. El script de arranque carga la tarifa. Correcciones: frase duplicada en la sección 3, criterio de US-04 fuera de lugar, criterio repetido en US-06 y referencias de la sección 6 partidas por el historial. |
 | 1.6 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). (#71) |
 | 1.7 | 14 de noviembre de 2026 | Origen y validación de los requisitos (sección 5.3), con el diagnóstico en `docs/diagnostico.md`. US-11 y US-12 se entregaron en el Sprint 2 (S2-25, #48). Se quita la referencia de OWASP repetida después del historial. S3-01 (#45) |
+| 1.8 | 15 de noviembre de 2026 | Tope por periodo (BR-18): FR-23 y US-16, fila nueva en la matriz de permisos y actor administrador con el tope. FR-13, US-08 y US-09 incluyen el tope. Cobertura con 18 reglas y 23 requisitos (decía 17 reglas, de BR-01 a BR-16). S3-04 (#14) |

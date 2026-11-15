@@ -7,7 +7,9 @@ import { createApp } from "../../app.js";
 import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
+import { closeCurrentVersions } from "../../versions.test-helper.js";
 import { hashSessionToken } from "../accounts/session-token.js";
+import { setPeriodCap } from "../rates/period-cap.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
 
@@ -29,12 +31,15 @@ const TOKEN = "token-de-prueba-de-la-ruta-de-salida-000001";
 
 // Like the other route tests, each test runs as parkapp_app and always rolls
 // back. The route's transaction is a savepoint inside the test transaction, so
-// a route that throws loses its writes, as it would in production.
+// a route that throws loses its writes, as it would in production. The versions
+// in force in a development database are closed first, so a cap loaded there
+// does not change the fees of these tests.
 async function withApp(test: (app: Express, db: Prisma.TransactionClient) => Promise<void>) {
   try {
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+        await closeCurrentVersions(tx);
         const prismaInTest = {
           $transaction: async (run: (db: Prisma.TransactionClient) => Promise<unknown>) => {
             await tx.$executeRawUnsafe("SAVEPOINT route");
@@ -62,10 +67,14 @@ function minutesFromNow(minutes: number, seconds = 0): Date {
   return new Date(Date.now() + (minutes * 60 + seconds) * 1000);
 }
 
-// An operator with an active session, the production car rate ($230) and a
-// grace period of 5 minutes since 10 minutes ago, and a car that entered at
-// the given time. The SAL plate is only for these tests.
-async function carInside(db: Prisma.TransactionClient, entryTime: Date) {
+// An operator with an active session, the production car rate ($230), a grace
+// period of 5 minutes and, if given, a cap per period since 10 minutes ago, and
+// a car that entered at the given time. The SAL plate is only for these tests.
+async function carInside(
+  db: Prisma.TransactionClient,
+  entryTime: Date,
+  periodCap?: { hours: number; value: number },
+) {
   const user = await db.user.create({
     data: {
       name: "Operador de la salida",
@@ -91,6 +100,14 @@ async function carInside(db: Prisma.TransactionClient, entryTime: Date) {
   });
   const grace = await setGracePeriod(db, { minutes: 5, createdById: user.id, now: ratesFrom });
   if (!rate.ok || !grace.ok) throw new Error("setup failed");
+  if (periodCap !== undefined) {
+    const cap = await setPeriodCap(db, {
+      ...periodCap,
+      now: ratesFrom,
+      changedBy: { userId: user.id, ip: IP },
+    });
+    if (!cap.ok) throw new Error("setup failed");
+  }
   const entry = await registerEntry(db, {
     plate: "SAL123",
     vehicleType: "CAR",
@@ -136,7 +153,9 @@ describe("POST /api/estadias/{id}/salida (FR-12 to FR-14, ADR 0008)", () => {
         horaSalida: expect.any(String),
         minutosCompletos: 6,
         valorMinuto: 230,
+        topePeriodo: null,
         subtotal: 1380,
+        descuentoTope: 0,
         ajusteRedondeo: 30,
         total: 1350,
       });
@@ -147,6 +166,30 @@ describe("POST /api/estadias/{id}/salida (FR-12 to FR-14, ADR 0008)", () => {
         where: { action: "EXIT_REGISTERED", entity: "estadia", entityId: stayId },
       });
       expect(event).toMatchObject({ userId: user.id, ip: IP });
+    });
+  });
+
+  it("answers the cap the car entered with and its discount (BR-14, BR-18)", async () => {
+    await withApp(async (app, db) => {
+      const { stayId, cookie } = await carInside(db, minutesFromNow(-6, -10), {
+        hours: 1,
+        value: 1000,
+      });
+
+      const response = await postExit(app, stayId, cookie);
+
+      expect(response.status).toBe(201);
+      // 6 minutes at $230 is $1,380, over the $1,000 cap of the first hour, so
+      // the cap takes off $380 and nothing is left to round (BR-07).
+      expect(response.body).toMatchObject({
+        minutosCompletos: 6,
+        valorMinuto: 230,
+        topePeriodo: { horas: 1, valor: 1000 },
+        subtotal: 1380,
+        descuentoTope: 380,
+        ajusteRedondeo: 0,
+        total: 1000,
+      });
     });
   });
 

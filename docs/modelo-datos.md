@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
 | Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14) |
-| Versión | 1.4 — 14 de noviembre de 2026 |
+| Versión | 1.5 — 15 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -22,7 +22,7 @@ claves y restricciones) y físico (esquema de Prisma sobre PostgreSQL).
 | Tope legal | Valor máximo por minuto aplicable al parqueadero, por tipo de vehículo, con la norma que lo origina. Solo cambia por migración. | BR-10, BR-15, FR-16 |
 | Tarifa | Valor por minuto que cobra el parqueadero, por tipo de vehículo. Cada cambio crea una versión nueva. | BR-09, BR-10, BR-11, FR-16 |
 | Periodo de gracia | Minutos iniciales sin cobro. Cada cambio crea una versión nueva. | BR-08, BR-11, FR-17 |
-| Tope por periodo | Valor máximo que se cobra por cada periodo de horas de una estadía, igual para carros y motos. Puede estar desactivado. Cada cambio crea una versión nueva. | BR-11, BR-18 |
+| Tope por periodo | Valor máximo que se cobra por cada periodo de horas de una estadía, igual para carros y motos. Puede estar desactivado. Cada cambio crea una versión nueva. | BR-11, BR-18, FR-23 |
 | Estadía | Paso de un vehículo por el parqueadero: datos del vehículo observados al ingreso, ingreso, salida y, si aplica, anulación. | BR-01 a BR-04, BR-11 a BR-13, BR-16, BR-17; FR-07 a FR-12, FR-15, FR-21, FR-22 |
 | Comprobante | Constancia del cobro de una estadía cerrada, con los valores aplicados. | BR-05 a BR-07, BR-14, BR-18; FR-13, FR-14 |
 | Evento de auditoría | Registro inmutable de una acción: quién, qué, cuándo y desde qué IP. | FR-19, NFR-03, NFR-05, NFR-12 |
@@ -365,7 +365,7 @@ fallido, porque un usuario puede escribir por error su contraseña en ese campo
 | `ESTADIA_CORREGIDA` | `STAY_CORRECTED` | Corrección por reemplazo: anulación de la estadía equivocada y creación de su reemplazo, en la misma transacción. | BR-17, FR-19, FR-21, FR-22 | estadia (el reemplazo) | en una corrección de salida, el id de la estadía que se cerró con la hora de esa salida | Administrador |
 | TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
 | PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
-| TOPE_PERIODO_CAMBIADO | PERIOD_CAP_CHANGED | Activación o cambio del tope por periodo (nueva versión), o su desactivación (cierre de la versión vigente sin crear otra). | BR-18, FR-19 | tope_periodo (la nueva versión; en una desactivación, la versión cerrada, cuyo `vigente_hasta` es la hora del evento) | — | Administrador |
+| TOPE_PERIODO_CAMBIADO | PERIOD_CAP_CHANGED | Activación o cambio del tope por periodo (nueva versión), o su desactivación (cierre de la versión vigente sin crear otra). | BR-18, FR-19, FR-23 | tope_periodo (la nueva versión; en una desactivación, la versión cerrada, cuyo `vigente_hasta` es la hora del evento) | — | Administrador |
 | CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
 | CUENTA_DESACTIVADA | ACCOUNT_DEACTIVATED | Desactivación de una cuenta; revoca sus sesiones. | FR-04, FR-19, NFR-04 | usuario | — | Administrador |
 | CUENTA_REACTIVADA | ACCOUNT_REACTIVATED | Reactivación de una cuenta. | FR-04, FR-19 | usuario | — | Administrador |
@@ -559,3 +559,4 @@ mediciones y no por suposición.
 | 1.2 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Catálogo de acciones de auditoría (4.1): `TARIFA_CAMBIADA` y `PERIODO_GRACIA_CAMBIADO` también los dispara el sistema (script de arranque), como `CUENTA_CREADA`. (#71) |
 | 1.3 | 14 de noviembre de 2026 | Sección 3.2: restricciones CHECK e índices únicos parciales en la base (RI-01, RI-02, RI-03, RI-05, RI-07, RI-09 en parte, RI-10, RI-12, RI-15, RI-17, RI-18 y RI-19 en parte), con el estado de cada regla; índices nuevos en la sección 4.4. S3-03 (#6) |
 | 1.4 | 14 de noviembre de 2026 | Tope por periodo (BR-18): entidad y tabla `tope_periodo`, `estadia.tope_periodo_id`, `comprobante.descuento_tope`, acción `TOPE_PERIODO_CAMBIADO` (16 acciones) y decisión 7 de la sección 2.4. RI-06, RI-07, RI-08 y RI-12 incluyen el tope, y RI-20 es nueva. Sección 3.2 con la migración `add_period_cap` e índice nuevo en la sección 4.4. S3-04 (#14) |
+| 1.5 | 15 de noviembre de 2026 | La entidad Tope por periodo (1.1) y la acción `TOPE_PERIODO_CAMBIADO` (4.1) citan FR-23, el requisito de configurar el tope (`docs/requisitos.md` 1.8). S3-04 (#14) |

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import type {
+  PeriodCap,
   PrismaClient,
   Rate,
   Receipt,
@@ -58,9 +59,12 @@ function toEstadia(stay: Stay) {
   };
 }
 
-// ADR 0008: the receipt with the fields of BR-14. The rate per minute comes from
-// the stay, since the receipt keeps only the results (data model, decision 5).
-function toComprobante(receipt: Receipt & { stay: Stay & { rate: Rate } }) {
+// ADR 0008: the receipt with the fields of BR-14. The rate per minute and the cap
+// come from the stay, since the receipt keeps only the results (data model,
+// decision 5). The cap is null if none was in force at entry (BR-11).
+function toComprobante(
+  receipt: Receipt & { stay: Stay & { rate: Rate; periodCap: PeriodCap | null } },
+) {
   const { stay } = receipt;
   return {
     consecutivo: receipt.number,
@@ -71,7 +75,10 @@ function toComprobante(receipt: Receipt & { stay: Stay & { rate: Rate } }) {
     horaSalida: stay.exitTime?.toISOString(),
     minutosCompletos: receipt.fullMinutes,
     valorMinuto: stay.rate.valuePerMinute,
+    topePeriodo:
+      stay.periodCap === null ? null : { horas: stay.periodCap.hours, valor: stay.periodCap.value },
     subtotal: receipt.subtotal,
+    descuentoTope: receipt.capDiscount,
     ajusteRedondeo: receipt.roundingAdjustment,
     total: receipt.total,
   };
@@ -176,7 +183,7 @@ export function createStaysRouter(prisma: PrismaClient): Router {
       if (!result.ok) return { kind: result.reason } as const;
       const receipt = await db.receipt.findUniqueOrThrow({
         where: { id: result.receiptId },
-        include: { stay: { include: { rate: true } } },
+        include: { stay: { include: { rate: true, periodCap: true } } },
       });
       return { kind: "registered", receipt } as const;
     });

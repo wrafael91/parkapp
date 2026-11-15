@@ -6,6 +6,7 @@ import { createApp } from "../../app.js";
 import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma, PrismaClient, Role } from "../../generated/prisma/client.js";
+import { closeCurrentVersions } from "../../versions.test-helper.js";
 import { hashSessionToken } from "../accounts/session-token.js";
 import { registerEntry } from "../stays/entry.service.js";
 import { registerExit } from "../stays/exit.service.js";
@@ -24,12 +25,15 @@ const IP = "198.51.100.42";
 const TOKEN = "token-de-prueba-de-las-rutas-de-tarifas-0001";
 
 // Like the other route tests, each test runs as parkapp_app and always rolls
-// back. The route's transaction is a savepoint inside the test transaction.
+// back. The route's transaction is a savepoint inside the test transaction. The
+// versions in force in a development database are closed first, so a cap
+// loaded there does not change the fee of the BR-11 test.
 async function withApp(test: (app: Express, db: Prisma.TransactionClient) => Promise<void>) {
   try {
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+        await closeCurrentVersions(tx);
         const prismaInTest = {
           $transaction: async (run: (db: Prisma.TransactionClient) => Promise<unknown>) => {
             await tx.$executeRawUnsafe("SAVEPOINT route");
