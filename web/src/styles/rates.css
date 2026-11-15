@@ -1,5 +1,6 @@
-/* The rate and the grace period (Image 4 of the article): side by side on a
-   wide screen, one under the other on a phone. */
+/* The rate, the grace period and the cap (Image 4 of the article): on a wide
+   screen the rate on the left, and the grace period and the cap on the right;
+   one under the other on a phone. */
 .rates {
   display: grid;
   gap: 1.25rem;
@@ -13,6 +14,10 @@
 @media (min-width: 48rem) {
   .rates {
     grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  }
+
+  .rates > .card:first-child {
+    grid-row: span 2;
   }
 }
 
@@ -96,6 +101,11 @@
 .rates .button-primary + .alert,
 .rates .button-primary + .saved {
   margin: 1rem 0 0;
+}
+
+/* The cap in force, above its fields. */
+.cap-status {
+  margin: 0 0 1rem;
 }
 
 /* What was saved: quieter than an alert, still announced by role="status". */

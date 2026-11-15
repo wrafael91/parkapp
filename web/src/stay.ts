@@ -1,4 +1,4 @@
-// Shared by the list (Stays.tsx) and the exit (Exit.tsx).
+// Shared by the list (Stays.tsx), the exit (Exit.tsx) and the rates (Rates.tsx).
 
 // A stay as the API answers it (ADR 0008).
 export type Estadia = {
@@ -29,4 +29,14 @@ export function formatEntryTime(iso: string): string {
     BOGOTA_TIME.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
   );
   return `${parts.day}/${parts.month} ${parts.hour}:${parts.minute}`;
+}
+
+// A dot every three digits (1.380), put together by hand for the same reason.
+export function groupDigits(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// The API sends whole pesos (ADR 0008).
+export function formatPesos(value: number): string {
+  return `$${groupDigits(value)}`;
 }

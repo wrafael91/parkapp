@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { VEHICLE_TYPES } from "./stay.ts";
+import { formatPesos, VEHICLE_TYPES } from "./stay.ts";
 
-// GET and POST /api/tarifas and /api/periodo-gracia (ADR 0008), with a relative
-// URL and the default fetch, as in App.tsx: the browser sends the session
-// cookie by itself (docs/modelo-amenazas.md, 7.3).
+// GET and POST /api/tarifas, /api/periodo-gracia and /api/tope-periodo (ADR
+// 0008), with a relative URL and the default fetch, as in App.tsx: the browser
+// sends the session cookie by itself (docs/modelo-amenazas.md, 7.3).
 const RATES_URL = "/api/tarifas";
 const GRACE_PERIOD_URL = "/api/periodo-gracia";
+const PERIOD_CAP_URL = "/api/tope-periodo";
 
 // A rate as the API answers it (ADR 0008).
 type Tarifa = {
@@ -15,7 +16,10 @@ type Tarifa = {
   vigenteDesde: string;
 };
 
-type Loaded = { tarifas: Tarifa[]; minutos: number | null };
+// The cap per period as the API answers it, or null when it is off (BR-18).
+type TopePeriodo = { horas: number; valor: number; vigenteDesde: string };
+
+type Loaded = { tarifas: Tarifa[]; minutos: number | null; topePeriodo: TopePeriodo | null };
 
 type Settings = { status: "loading" } | { status: "failed" } | ({ status: "loaded" } & Loaded);
 
@@ -25,8 +29,9 @@ type Note = { kind: "error" | "saved"; text: string } | null;
 const SAVE_FAILED = "No se pudo guardar. Intenta de nuevo.";
 const ONLY_ADMINISTRATOR = "Solo un administrador puede cambiar las tarifas.";
 
-// The rate and the grace period (US-11, US-12; Image 4 of the article). The
-// server checks the role and the legal cap (BR-10); the page only shows them.
+// The rate, the grace period and the cap per period (US-11, US-12, US-16; Image 4
+// of the article). The server checks the role, the legal cap (BR-10) and the
+// limits of the cap (RI-20); the page only shows them.
 // A 401 means the session ended, so the page goes back to sign in.
 export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [settings, setSettings] = useState<Settings>({ status: "loading" });
@@ -37,28 +42,37 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
   const [graceNote, setGraceNote] = useState<Note>(null);
   const [savingRate, setSavingRate] = useState(false);
   const [savingGrace, setSavingGrace] = useState(false);
+  const [hoursDraft, setHoursDraft] = useState("");
+  const [capValueDraft, setCapValueDraft] = useState("");
 
   useEffect(() => {
     // Loads once, when the screen appears.
     const controller = new AbortController();
     const { signal } = controller;
-    Promise.all([fetch(RATES_URL, { signal }), fetch(GRACE_PERIOD_URL, { signal })])
-      .then(async ([rates, grace]) => {
-        if (rates.status === 401 || grace.status === 401) {
+    Promise.all([
+      fetch(RATES_URL, { signal }),
+      fetch(GRACE_PERIOD_URL, { signal }),
+      fetch(PERIOD_CAP_URL, { signal }),
+    ])
+      .then(async ([rates, grace, cap]) => {
+        if (rates.status === 401 || grace.status === 401 || cap.status === 401) {
           onSessionEnded();
           return;
         }
-        if (!rates.ok || !grace.ok) {
+        if (!rates.ok || !grace.ok || !cap.ok) {
           setSettings({ status: "failed" });
           return;
         }
         const { tarifas }: { tarifas: Tarifa[] } = await rates.json();
         const { minutos }: { minutos: number | null } = await grace.json();
-        setSettings({ status: "loaded", tarifas, minutos });
+        const { topePeriodo }: { topePeriodo: TopePeriodo | null } = await cap.json();
+        setSettings({ status: "loaded", tarifas, minutos, topePeriodo });
         setDrafts(
           Object.fromEntries(tarifas.map((rate) => [rate.tipoVehiculo, String(rate.valorMinuto)])),
         );
         setGraceDraft(minutos === null ? "" : String(minutos));
+        setHoursDraft(topePeriodo === null ? "" : String(topePeriodo.horas));
+        setCapValueDraft(topePeriodo === null ? "" : String(topePeriodo.valor));
       })
       .catch(() => {
         if (!signal.aborted) setSettings({ status: "failed" });
@@ -233,8 +247,51 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
         </button>
         <NoteLine note={graceNote} />
       </section>
+      <section className="card">
+        <h2>Tope por periodo</h2>
+        <p className="muted">
+          Lo máximo que se cobra por cada periodo de horas, contado desde el ingreso del vehículo.
+          Aplica a carros y motos. Los vehículos que ya están dentro conservan el tope con el que
+          ingresaron.
+        </p>
+        <p className="cap-status">
+          Tope actual:{" "}
+          <strong>
+            {settings.topePeriodo === null ? "desactivado" : describeCap(settings.topePeriodo)}
+          </strong>
+        </p>
+        <label>
+          Periodo (horas)
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={24}
+            step={1}
+            value={hoursDraft}
+            onChange={(event) => setHoursDraft(event.target.value)}
+          />
+        </label>
+        <label>
+          Valor máximo por periodo
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={1000000}
+            step={1}
+            value={capValueDraft}
+            onChange={(event) => setCapValueDraft(event.target.value)}
+          />
+        </label>
+      </section>
     </div>
   );
+}
+
+// $11.000 cada 12 horas (BR-18).
+function describeCap(cap: TopePeriodo): string {
+  return `${formatPesos(cap.valor)} cada ${cap.horas} ${cap.horas === 1 ? "hora" : "horas"}`;
 }
 
 function NoteLine({ note }: { note: Note }) {
