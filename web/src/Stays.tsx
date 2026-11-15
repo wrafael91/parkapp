@@ -1,6 +1,6 @@
 import { useEffect, useState, type SubmitEvent } from "react";
 import Exit from "./Exit.tsx";
-import { formatEntryTime, VEHICLE_TYPES, type Estadia } from "./stay.ts";
+import { formatEntryTime, normalizePlateSearch, VEHICLE_TYPES, type Estadia } from "./stay.ts";
 
 // GET and POST /api/estadias (ADR 0008), with a relative URL and the default
 // fetch, as in App.tsx: the browser sends the session cookie by itself, without
@@ -19,6 +19,8 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   const [leaving, setLeaving] = useState<Estadia | null>(null);
   // Why the last exit could not be registered, when the stay was gone.
   const [exitError, setExitError] = useState<string | null>(null);
+  // The plate search, as typed (FR-11). It stays while an exit is registered.
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     // Loads once, when the screen appears. The API sends the newest first.
@@ -57,6 +59,12 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
         : current,
     );
   }
+
+  // The list on screen is filtered, without asking the API again: the vehicles
+  // inside are already loaded, and new entries and exits keep it up to date.
+  const searched = normalizePlateSearch(search);
+  const shown =
+    list.status === "loaded" ? list.stays.filter((stay) => stay.placa.includes(searched)) : [];
 
   if (leaving) {
     return (
@@ -97,6 +105,19 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
           <p className="muted">No hay vehículos dentro.</p>
         )}
         {list.status === "loaded" && list.stays.length > 0 && (
+          <label className="plate-search">
+            Buscar por placa
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              maxLength={20}
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
+          </label>
+        )}
+        {list.status === "loaded" && list.stays.length > 0 && (
           // On a phone the table scrolls inside its card, not the whole page.
           <div className="table-scroll">
             <table className="stays">
@@ -111,7 +132,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
                 </tr>
               </thead>
               <tbody>
-                {list.stays.map((stay) => (
+                {shown.map((stay) => (
                   <tr key={stay.id}>
                     <td>
                       <span className="plate">{stay.placa}</span>
