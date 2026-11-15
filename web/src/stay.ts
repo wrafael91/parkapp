@@ -12,6 +12,12 @@ export type Estadia = {
 
 export const VEHICLE_TYPES = { CARRO: "Carro", MOTO: "Moto" };
 
+// FR-08 without the format check: what was typed, in uppercase and without
+// spaces or hyphens, to find the plates that contain it (FR-11).
+export function normalizePlateSearch(text: string): string {
+  return text.toUpperCase().replace(/[\s-]/g, "");
+}
+
 // ADR 0008, decision 5: the API sends UTC and the page shows Bogotá time, as
 // dd/mm HH:mm. It is put together from the parts, so the separators do not
 // depend on the ICU version of each browser or Node.

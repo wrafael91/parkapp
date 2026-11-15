@@ -38,6 +38,17 @@
   text-transform: uppercase;
 }
 
+/* The search over the vehicles inside, in capitals like the plates it finds.
+   The page normalizes what was typed before comparing (FR-08, FR-11). */
+.plate-search {
+  max-width: 20rem;
+}
+
+.plate-search input {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* Buttons: filled for the main action, outlined for the others. */
 .button-primary,
 .button-secondary,
