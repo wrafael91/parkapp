@@ -25,12 +25,13 @@ export async function registerExit(db: Db, input: RegisterExitInput): Promise<Re
   }
   // BR-11: the rate and the grace period stored with the stay, the ones in
   // force at entry. The fee is calculated before writing: a RangeError leaves
-  // the stay active and issues no receipt.
+  // the stay active and issues no receipt. No stay stores a cap yet (#14).
   const fee = calculateFee({
     entryTime: stay.entryTime,
     exitTime: input.now,
     valuePerMinute: stay.rate.valuePerMinute,
     gracePeriodMinutes: stay.gracePeriod.minutes,
+    periodCap: null,
   });
   // RI-04: only an active stay is closed; a closed or voided one keeps its data.
   // The condition also makes two simultaneous exits of the same stay close it
@@ -43,8 +44,17 @@ export async function registerExit(db: Db, input: RegisterExitInput): Promise<Re
     return { ok: false, reason: "notActive" };
   }
   // RI-11 and RI-12: one receipt per exit, in the same transaction, with the
-  // results of the calculation as they are (data model, decision 5).
-  const receipt = await db.receipt.create({ data: { stayId: stay.id, ...fee } });
+  // results of the calculation as they are (data model, decision 5). The cap
+  // discount has no column yet (#14); with no cap it is always 0.
+  const receipt = await db.receipt.create({
+    data: {
+      stayId: stay.id,
+      fullMinutes: fee.fullMinutes,
+      subtotal: fee.subtotal,
+      roundingAdjustment: fee.roundingAdjustment,
+      total: fee.total,
+    },
+  });
   await db.auditEvent.create({
     data: {
       action: "EXIT_REGISTERED",
