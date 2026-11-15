@@ -117,7 +117,10 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
             />
           </label>
         )}
-        {list.status === "loaded" && list.stays.length > 0 && (
+        {list.status === "loaded" && list.stays.length > 0 && shown.length === 0 && (
+          <p className="muted">Ningún vehículo dentro coincide con {searched}.</p>
+        )}
+        {shown.length > 0 && (
           // On a phone the table scrolls inside its card, not the whole page.
           <div className="table-scroll">
             <table className="stays">
