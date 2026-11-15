@@ -28,6 +28,7 @@ type Note = { kind: "error" | "saved"; text: string } | null;
 
 const SAVE_FAILED = "No se pudo guardar. Intenta de nuevo.";
 const ONLY_ADMINISTRATOR = "Solo un administrador puede cambiar las tarifas.";
+const CAP_OFF = "Tope desactivado: los vehículos que ingresen desde ahora se cobran sin tope.";
 
 // The rate, the grace period and the cap per period (US-11, US-12, US-16; Image 4
 // of the article). The server checks the role, the legal cap (BR-10) and the
@@ -44,6 +45,8 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
   const [savingGrace, setSavingGrace] = useState(false);
   const [hoursDraft, setHoursDraft] = useState("");
   const [capValueDraft, setCapValueDraft] = useState("");
+  const [capNote, setCapNote] = useState<Note>(null);
+  const [savingCap, setSavingCap] = useState(false);
 
   useEffect(() => {
     // Loads once, when the screen appears.
@@ -126,7 +129,7 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
     const response = await fetch(GRACE_PERIOD_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutos: graceDraft.trim() === "" ? null : Number(graceDraft) }),
+      body: JSON.stringify({ minutos: numberOrNull(graceDraft) }),
     }).catch(() => null);
     setSavingGrace(false);
     if (response?.ok) {
@@ -147,6 +150,43 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
     }
     const body = response === null ? null : await response.json().catch(() => null);
     setGraceNote({ kind: "error", text: graceError(body?.error?.codigo) });
+  }
+
+  // Turns the cap on or changes it with { horas, valor }, or turns it off with
+  // { activo: false } (BR-18). The server validates the values (RI-20): an empty
+  // field goes as null. The stays inside keep their cap (BR-11).
+  async function sendCap(change: object) {
+    setSavingCap(true);
+    const response = await fetch(PERIOD_CAP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(change),
+    }).catch(() => null);
+    setSavingCap(false);
+    if (response?.ok) {
+      const { topePeriodo }: { topePeriodo: TopePeriodo | null } = await response.json();
+      setSettings((current) =>
+        current.status === "loaded" ? { ...current, topePeriodo } : current,
+      );
+      setCapNote({
+        kind: "saved",
+        text: topePeriodo === null ? CAP_OFF : `Tope guardado: ${describeCap(topePeriodo)}.`,
+      });
+      return;
+    }
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    const body = response === null ? null : await response.json().catch(() => null);
+    const codigo: string | undefined = body?.error?.codigo;
+    // Someone else turned it off first: the card shows it off.
+    if (codigo === "SIN_TOPE_PERIODO") {
+      setSettings((current) =>
+        current.status === "loaded" ? { ...current, topePeriodo: null } : current,
+      );
+    }
+    setCapNote({ kind: "error", text: capError(codigo) });
   }
 
   if (settings.status === "loading") return <p className="muted">Cargando…</p>;
@@ -284,9 +324,35 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
             onChange={(event) => setCapValueDraft(event.target.value)}
           />
         </label>
+        <button
+          type="button"
+          className="button-primary"
+          disabled={savingCap}
+          onClick={() =>
+            sendCap({ horas: numberOrNull(hoursDraft), valor: numberOrNull(capValueDraft) })
+          }
+        >
+          Guardar tope
+        </button>
+        {settings.topePeriodo !== null && (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={savingCap}
+            onClick={() => sendCap({ activo: false })}
+          >
+            Desactivar tope
+          </button>
+        )}
+        <NoteLine note={capNote} />
       </section>
     </div>
   );
+}
+
+// What is written in a number field, or null if it is empty.
+function numberOrNull(draft: string): number | null {
+  return draft.trim() === "" ? null : Number(draft);
 }
 
 // $11.000 cada 12 horas (BR-18).
@@ -326,6 +392,19 @@ function graceError(codigo: string | undefined): string {
   switch (codigo) {
     case "ENTRADA_INVALIDA":
       return "Los minutos de gracia deben ser un número entero, desde 0.";
+    case "ACCESO_DENEGADO":
+      return ONLY_ADMINISTRATOR;
+    default:
+      return SAVE_FAILED;
+  }
+}
+
+function capError(codigo: string | undefined): string {
+  switch (codigo) {
+    case "ENTRADA_INVALIDA":
+      return "El periodo debe ser de 1 a 24 horas, y el valor, un número entero de pesos entre $1 y $1.000.000.";
+    case "SIN_TOPE_PERIODO":
+      return "El tope ya estaba desactivado.";
     case "ACCESO_DENEGADO":
       return ONLY_ADMINISTRATOR;
     default:

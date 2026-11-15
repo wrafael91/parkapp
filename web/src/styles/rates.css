@@ -93,13 +93,20 @@
   }
 }
 
-/* The grace period: the field and the button fill the card. */
-.rates label + .button-primary {
+/* The grace period and the cap: the fields and the buttons fill the card. */
+.rates label + .button-primary,
+.rates .button-primary + .button-secondary {
   width: 100%;
 }
 
+.rates .button-primary + .button-secondary {
+  margin-top: 0.5rem;
+}
+
 .rates .button-primary + .alert,
-.rates .button-primary + .saved {
+.rates .button-primary + .saved,
+.rates .button-secondary + .alert,
+.rates .button-secondary + .saved {
   margin: 1rem 0 0;
 }
 
