@@ -8,7 +8,10 @@ import { createPrismaClient } from "../../db.js";
 import type { Prisma, PrismaClient, Role } from "../../generated/prisma/client.js";
 import { closeCurrentVersions } from "../../versions.test-helper.js";
 import { hashSessionToken } from "../accounts/session-token.js";
+import { registerEntry } from "../stays/entry.service.js";
+import { registerExit } from "../stays/exit.service.js";
 import { deactivatePeriodCap, setPeriodCap } from "./period-cap.js";
+import { setGracePeriod, setRate } from "./rate-settings.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -217,6 +220,114 @@ describe("POST /api/tope-periodo turns the cap on or changes it (FR-23, BR-18)",
       expect(await db.periodCap.count()).toBe(versionsBefore);
       expect(await db.periodCap.count({ where: { validTo: null } })).toBe(1);
       expect(await capEvents(db)).toBe(eventsBefore);
+    });
+  });
+});
+
+describe("POST /api/tope-periodo turns the cap off (FR-23, BR-18)", () => {
+  it("closes the version in force without creating one and logs the user and the IP", async () => {
+    await withApp(async (app, db) => {
+      const { user, changedBy, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const current = await setPeriodCap(db, {
+        hours: 12,
+        value: 11000,
+        now: minutesFromNow(-10),
+        changedBy,
+      });
+      if (!current.ok) throw new Error("setup failed");
+      const versionsBefore = await db.periodCap.count();
+      const before = Date.now();
+
+      const response = await post(app, cookie, { activo: false });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ topePeriodo: null });
+      const closed = await db.periodCap.findUniqueOrThrow({ where: { id: current.periodCapId } });
+      expect(closed.validTo?.getTime()).toBeGreaterThanOrEqual(before);
+      expect(await db.periodCap.count()).toBe(versionsBefore);
+      expect(await db.periodCap.count({ where: { validTo: null } })).toBe(0);
+      // The second event of that version, after the one that turned it on,
+      // points to the closed version (docs/modelo-datos.md, 4.1).
+      const events = await db.auditEvent.findMany({
+        where: { action: "PERIOD_CAP_CHANGED", entityId: current.periodCapId },
+        orderBy: { id: "asc" },
+      });
+      expect(events).toHaveLength(2);
+      expect(events[1]).toMatchObject({ userId: user.id, ip: IP });
+    });
+  });
+
+  it("answers 409 SIN_TOPE_PERIODO when no cap is in force, and logs nothing", async () => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+      const eventsBefore = await capEvents(db);
+
+      const response = await post(app, cookie, { activo: false });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: { codigo: "SIN_TOPE_PERIODO", mensaje: "No hay un tope por periodo activo." },
+      });
+      expect(await capEvents(db)).toBe(eventsBefore);
+    });
+  });
+});
+
+describe("a change of the cap does not touch the stays inside (BR-11)", () => {
+  it("a car that entered with the cap keeps it after the cap is turned off", async () => {
+    await withApp(async (app, db) => {
+      const { user, changedBy, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const loadedAt = minutesFromNow(-20);
+      await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 230,
+        createdById: user.id,
+        now: loadedAt,
+      });
+      await setGracePeriod(db, { minutes: 5, createdById: user.id, now: loadedAt });
+      await setPeriodCap(db, { hours: 1, value: 1000, now: loadedAt, changedBy });
+      const inside = await registerEntry(db, {
+        plate: "TOP123",
+        vehicleType: "CAR",
+        color: "Gris",
+        userId: user.id,
+        ip: IP,
+        now: minutesFromNow(-6, -10),
+      });
+      if (!inside.ok) throw new Error("setup failed");
+
+      const off = await post(app, cookie, { activo: false });
+      const later = await registerEntry(db, {
+        plate: "TOP124",
+        vehicleType: "CAR",
+        color: "Gris",
+        userId: user.id,
+        ip: IP,
+        now: new Date(),
+      });
+      if (!later.ok) throw new Error("setup failed");
+      const exits = [
+        await registerExit(db, { stayId: inside.stayId, userId: user.id, ip: IP, now: new Date() }),
+        await registerExit(db, {
+          stayId: later.stayId,
+          userId: user.id,
+          ip: IP,
+          now: minutesFromNow(6, 10),
+        }),
+      ];
+
+      expect(off.status).toBe(200);
+      const receipts = await Promise.all(
+        exits.map((exit) => {
+          if (!exit.ok) throw new Error("exit failed");
+          return db.receipt.findUniqueOrThrow({ where: { id: exit.receiptId } });
+        }),
+      );
+      // 6 minutes at $230 is $1,380: the car inside pays the $1,000 cap of its
+      // first hour, and the one that entered after the cap was turned off pays
+      // by the minute, $1,350 (BR-07).
+      expect(receipts[0]).toMatchObject({ subtotal: 1380, capDiscount: 380, total: 1000 });
+      expect(receipts[1]).toMatchObject({ subtotal: 1380, capDiscount: 0, total: 1350 });
     });
   });
 });
