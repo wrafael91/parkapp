@@ -35,7 +35,9 @@ const RECEIPT = {
   horaSalida: "2026-11-11T02:28:10.000Z",
   minutosCompletos: 6,
   valorMinuto: 230,
+  topePeriodo: null,
   subtotal: 1380,
+  descuentoTope: 0,
   ajusteRedondeo: 30,
   total: 1350,
 };
@@ -156,7 +158,7 @@ describe("receipt", () => {
   });
 
   it("groups the thousands and shows a zero adjustment without a sign", async () => {
-    // A motorcycle of more than six days (no daily cap until #14), at its own
+    // A motorcycle of more than six days that entered with no cap, at its own
     // rate, so a page with a fixed rate would fail.
     const long = {
       consecutivo: 16,
@@ -167,7 +169,9 @@ describe("receipt", () => {
       horaSalida: "2026-11-11T06:00:00.000Z",
       minutosCompletos: 9000,
       valorMinuto: 161,
+      topePeriodo: null,
       subtotal: 1449000,
+      descuentoTope: 0,
       ajusteRedondeo: 0,
       total: 1449000,
     };
@@ -187,6 +191,64 @@ describe("receipt", () => {
       ["Subtotal", "$1.449.000"],
       ["Ajuste por redondeo", "$0"],
       ["Total (IVA incluido)", "$1.449.000"],
+    ]);
+  });
+
+  // Case 12 of the business rules: 15 hours at $33 with lot B's cap of $11,000
+  // every 12 hours. 18:00 on November 10 to 09:00 on November 11 in Bogotá.
+  it("shows the cap and its discount when the cap lowered the fee (BR-14, BR-18)", async () => {
+    const capped = {
+      ...RECEIPT,
+      horaIngreso: "2026-11-10T23:00:00.000Z",
+      horaSalida: "2026-11-11T14:00:00.000Z",
+      minutosCompletos: 900,
+      valorMinuto: 33,
+      topePeriodo: { horas: 12, valor: 11000 },
+      subtotal: 29700,
+      descuentoTope: 12760,
+      ajusteRedondeo: 40,
+      total: 16900,
+    };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, capped));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await screen.findByRole("heading", { name: "Comprobante N.º 15" });
+    expect(fields().slice(4)).toEqual([
+      ["Minutos cobrados", "900"],
+      ["Tarifa por minuto", "$33"],
+      ["Subtotal", "$29.700"],
+      ["Tope por periodo ($11.000 cada 12 h)", "−$12.760"],
+      ["Ajuste por redondeo", "−$40"],
+      ["Total (IVA incluido)", "$16.900"],
+    ]);
+  });
+
+  // Case 8: the stay entered with a cap that it did not reach, so the receipt
+  // has no cap line. Passes from the start, on purpose.
+  it("leaves the cap out when it did not lower the fee", async () => {
+    const notReached = {
+      ...RECEIPT,
+      minutosCompletos: 333,
+      valorMinuto: 33,
+      topePeriodo: { horas: 12, valor: 11000 },
+      subtotal: 10989,
+      descuentoTope: 0,
+      ajusteRedondeo: 39,
+      total: 10950,
+    };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, notReached));
+    const user = userEvent.setup();
+    renderStays();
+    await startExit(user, "ABC123");
+    await confirmExit(user);
+    await screen.findByRole("heading", { name: "Comprobante N.º 15" });
+    expect(fields().map(([term]) => term)).not.toContain("Tope por periodo ($11.000 cada 12 h)");
+    expect(fields().slice(6)).toEqual([
+      ["Subtotal", "$10.989"],
+      ["Ajuste por redondeo", "−$39"],
+      ["Total (IVA incluido)", "$10.950"],
     ]);
   });
 

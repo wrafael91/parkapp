@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatEntryTime, VEHICLE_TYPES, type Estadia } from "./stay.ts";
+import { formatEntryTime, formatPesos, groupDigits, VEHICLE_TYPES, type Estadia } from "./stay.ts";
 
 // The receipt as POST /api/estadias/{id}/salida answers it, with the BR-14
 // fields (ADR 0008).
@@ -12,7 +12,10 @@ type Comprobante = {
   horaSalida: string;
   minutosCompletos: number;
   valorMinuto: number;
+  // The cap the stay entered with, or null (BR-11, BR-18).
+  topePeriodo: { horas: number; valor: number } | null;
   subtotal: number;
+  descuentoTope: number;
   ajusteRedondeo: number;
   total: number;
 };
@@ -36,16 +39,6 @@ function formatReceiptTime(iso: string): string {
     RECEIPT_TIME.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
   );
   return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-// A dot every three digits (1.380), put together by hand for the same reason.
-function groupDigits(value: number): string {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-
-// The API sends whole pesos (ADR 0008).
-function formatPesos(value: number): string {
-  return `$${groupDigits(value)}`;
 }
 
 // The page reads the API's error code (ADR 0008, decision 6). Both mean the
@@ -151,7 +144,8 @@ export default function Exit({
   );
 }
 
-// The receipt (BR-14, FR-14). When printed, only this section goes on the page
+// The receipt (BR-14, FR-14). The cap and its discount show only when the cap
+// lowered the fee (BR-18). When printed, only this section goes on the page
 // (styles/receipt.css).
 function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => void }) {
   return (
@@ -175,6 +169,17 @@ function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => vo
         <dd>{formatPesos(receipt.valorMinuto)}</dd>
         <dt className="receipt-subtotal">Subtotal</dt>
         <dd className="receipt-subtotal">{formatPesos(receipt.subtotal)}</dd>
+        {receipt.topePeriodo !== null && receipt.descuentoTope > 0 && (
+          <>
+            <dt className="receipt-cap">
+              Tope por periodo{" "}
+              <span>
+                ({formatPesos(receipt.topePeriodo.valor)} cada {receipt.topePeriodo.horas} h)
+              </span>
+            </dt>
+            <dd>−{formatPesos(receipt.descuentoTope)}</dd>
+          </>
+        )}
         <dt>Ajuste por redondeo</dt>
         <dd>
           {receipt.ajusteRedondeo > 0
