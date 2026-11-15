@@ -51,6 +51,10 @@ describe("calculateFee: fee cap per period examples", () => {
     { example: 7, stay: "3 min", exit: after(3), fullMinutes: 3, subtotal: 0, capDiscount: 0, total: 0 },
     { example: 8, stay: "5 h 33 min", exit: after(333), fullMinutes: 333, subtotal: 10989, capDiscount: 0, total: 10950 },
     { example: 9, stay: "5 h 34 min", exit: after(334), fullMinutes: 334, subtotal: 11022, capDiscount: 22, total: 11000 },
+    { example: 10, stay: "12 h 1 min", exit: after(721), fullMinutes: 721, subtotal: 23793, capDiscount: 12760, total: 11000 },
+    { example: 11, stay: "12 h 3 min", exit: after(723), fullMinutes: 723, subtotal: 23859, capDiscount: 12760, total: 11050 },
+    { example: 12, stay: "15 h", exit: after(900), fullMinutes: 900, subtotal: 29700, capDiscount: 12760, total: 16900 },
+    { example: 13, stay: "30 h", exit: after(1800), fullMinutes: 1800, subtotal: 59400, capDiscount: 26400, total: 33000 },
   ])("example $example: $stay", ({ exit, fullMinutes, subtotal, capDiscount, total }) => {
     expect(feeFor(exit, LOT_B_RATE, GRACE_MINUTES, LOT_B_CAP)).toEqual({
       fullMinutes,
@@ -85,6 +89,12 @@ describe("calculateFee: rules", () => {
 
   it("charges every minute since entry once the grace period is exceeded (BR-08)", () => {
     expect(feeFor(after(11), CAR_RATE, 10)).toEqual({ fullMinutes: 11, subtotal: 2530, capDiscount: 0, roundingAdjustment: 30, total: 2500 });
+  });
+
+  it("rounds the total once, not each block of the period (BR-07, BR-18)", () => {
+    // 3 blocks of 1 h at $33: each one charges min($1,980, $1,030) = $1,030.
+    const periodCap = { hours: 1, value: 1030 };
+    expect(feeFor(after(180), LOT_B_RATE, GRACE_MINUTES, periodCap)).toEqual({ fullMinutes: 180, subtotal: 5940, capDiscount: 2850, roundingAdjustment: 40, total: 3050 });
   });
 
   it("never caps a stay that entered with no cap in force (BR-11, BR-18)", () => {
