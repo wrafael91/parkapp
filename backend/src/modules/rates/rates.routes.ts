@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import type {
   LegalCap,
+  PeriodCap,
   Prisma,
   PrismaClient,
   Rate,
@@ -69,6 +70,16 @@ function toTarifa(rate: Rate, legalCap: LegalCap) {
     valorMinuto: rate.valuePerMinute,
     topeLegal: legalCap.valuePerMinute,
     vigenteDesde: rate.validFrom.toISOString(),
+  };
+}
+
+// ADR 0008: the cap in Spanish, or null when it is off.
+function toTopePeriodo(periodCap: PeriodCap | null) {
+  if (periodCap === null) return null;
+  return {
+    horas: periodCap.hours,
+    valor: periodCap.value,
+    vigenteDesde: periodCap.validFrom.toISOString(),
   };
 }
 
@@ -233,6 +244,35 @@ export function createGracePeriodRouter(prisma: PrismaClient): Router {
           minutos: outcome.gracePeriod.minutes,
           vigenteDesde: outcome.gracePeriod.validFrom.toISOString(),
         });
+    }
+  });
+
+  return router;
+}
+
+// ADR 0008: the cap exists once, like the grace period, so its route is singular.
+export function createPeriodCapRouter(prisma: PrismaClient): Router {
+  const router = Router();
+
+  // FR-23: the cap in force, or null if it is off (BR-18).
+  router.get("/", async (req, res) => {
+    const now = new Date();
+    const outcome = await prisma.$transaction(async (db) => {
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
+      const periodCap = await db.periodCap.findFirst({ where: current(now) });
+      return { kind: "found", periodCap } as const;
+    });
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", NO_SESSION);
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", NOT_ALLOWED);
+        return;
+      case "found":
+        res.status(200).json({ topePeriodo: toTopePeriodo(outcome.periodCap) });
     }
   });
 

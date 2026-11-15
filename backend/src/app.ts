@@ -4,7 +4,11 @@ import { errorHandler, notFound } from "./middleware/errors.js";
 import { requireAllowedOrigin } from "./middleware/origin.js";
 import { createSessionRouter } from "./modules/accounts/session.routes.js";
 import { createHealthRouter } from "./modules/health/health.routes.js";
-import { createGracePeriodRouter, createRatesRouter } from "./modules/rates/rates.routes.js";
+import {
+  createGracePeriodRouter,
+  createPeriodCapRouter,
+  createRatesRouter,
+} from "./modules/rates/rates.routes.js";
 import { createStaysRouter } from "./modules/stays/stays.routes.js";
 
 export interface AppOptions {
@@ -26,6 +30,7 @@ export function createApp(prisma: PrismaClient, options: AppOptions): Express {
   app.use("/api/estadias", createStaysRouter(prisma));
   app.use("/api/tarifas", createRatesRouter(prisma));
   app.use("/api/periodo-gracia", createGracePeriodRouter(prisma));
+  app.use("/api/tope-periodo", createPeriodCapRouter(prisma));
   app.use(notFound);
   app.use(errorHandler);
   return app;
