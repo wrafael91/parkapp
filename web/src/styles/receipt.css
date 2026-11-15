@@ -45,6 +45,18 @@
   font-weight: 600;
 }
 
+/* The cap line can be long ("Tope por periodo ($1.000.000 cada 24 h)"), so it
+   wraps instead of pushing its value out of the receipt: the cap in brackets
+   goes whole to the second line. */
+.receipt-data dt.receipt-cap {
+  flex-wrap: wrap;
+  column-gap: 0.3em;
+}
+
+.receipt-data dt.receipt-cap span {
+  white-space: nowrap;
+}
+
 .receipt-data .receipt-subtotal {
   margin-top: 0.2rem;
   padding-top: 0.85rem;

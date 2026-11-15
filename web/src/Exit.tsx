@@ -12,7 +12,10 @@ type Comprobante = {
   horaSalida: string;
   minutosCompletos: number;
   valorMinuto: number;
+  // The cap the stay entered with, or null (BR-11, BR-18).
+  topePeriodo: { horas: number; valor: number } | null;
   subtotal: number;
+  descuentoTope: number;
   ajusteRedondeo: number;
   total: number;
 };
@@ -141,7 +144,8 @@ export default function Exit({
   );
 }
 
-// The receipt (BR-14, FR-14). When printed, only this section goes on the page
+// The receipt (BR-14, FR-14). The cap and its discount show only when the cap
+// lowered the fee (BR-18). When printed, only this section goes on the page
 // (styles/receipt.css).
 function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => void }) {
   return (
@@ -165,6 +169,17 @@ function Receipt({ receipt, onClose }: { receipt: Comprobante; onClose: () => vo
         <dd>{formatPesos(receipt.valorMinuto)}</dd>
         <dt className="receipt-subtotal">Subtotal</dt>
         <dd className="receipt-subtotal">{formatPesos(receipt.subtotal)}</dd>
+        {receipt.topePeriodo !== null && receipt.descuentoTope > 0 && (
+          <>
+            <dt className="receipt-cap">
+              Tope por periodo{" "}
+              <span>
+                ({formatPesos(receipt.topePeriodo.valor)} cada {receipt.topePeriodo.horas} h)
+              </span>
+            </dt>
+            <dd>−{formatPesos(receipt.descuentoTope)}</dd>
+          </>
+        )}
         <dt>Ajuste por redondeo</dt>
         <dd>
           {receipt.ajusteRedondeo > 0
