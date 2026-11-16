@@ -568,6 +568,115 @@ describe("GET /api/estadias?fecha= (FR-18, US-13)", () => {
   });
 });
 
+describe("GET /api/estadias?placa= and tipoVehiculo= (FR-11, FR-18, US-13)", () => {
+  // Three stays on three days, and the same plate in and out twice.
+  async function threeDays(db: Prisma.TransactionClient, userId: number) {
+    const car = await entryAt(
+      db,
+      { plate: "TSB101", vehicleType: "CAR", userId },
+      new Date("2030-02-01T15:00:00.000Z"),
+    );
+    const motorcycle = await entryAt(
+      db,
+      { plate: "TSB10A", vehicleType: "MOTORCYCLE", userId },
+      new Date("2030-02-02T15:00:00.000Z"),
+    );
+    const other = await entryAt(
+      db,
+      { plate: "TSC777", vehicleType: "CAR", userId },
+      new Date("2030-02-03T15:00:00.000Z"),
+    );
+    return { car, motorcycle, other, ids: [car, motorcycle, other] };
+  }
+
+  it.each([
+    ["the whole plate as typed", "tsb-101", ["car"]],
+    ["part of the plate with a space", "sb 10", ["motorcycle", "car"]],
+    ["the end of a motorcycle plate", "10a", ["motorcycle"]],
+    ["a plate that is not there", "TSZ", []],
+  ])("searches every day by %s", async (_case, placa, expected) => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const stays = await threeDays(db, user.id);
+
+      const response = await getStays(app, `?placa=${encodeURIComponent(placa)}`, cookie);
+
+      expect(response.status).toBe(200);
+      expect(idsAmong(response.body, stays.ids)).toEqual(
+        expected.map((name) => stays[name as "car" | "motorcycle"]),
+      );
+    });
+  });
+
+  it.each([
+    ["the day and the plate", "?fecha=2030-02-02&placa=tsb", ["motorcycle"]],
+    ["the day and the type", "?fecha=2030-02-02&tipoVehiculo=CARRO", []],
+    ["the plate and the type", "?placa=tsb&tipoVehiculo=CARRO", ["car"]],
+    ["the plate and the motorcycles", "?placa=ts&tipoVehiculo=MOTO", ["motorcycle"]],
+  ])("combines %s", async (_case, query, expected) => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const stays = await threeDays(db, user.id);
+
+      const response = await getStays(app, query, cookie);
+
+      expect(response.status).toBe(200);
+      expect(idsAmong(response.body, stays.ids)).toEqual(
+        expected.map((name) => stays[name as "car" | "motorcycle"]),
+      );
+    });
+  });
+
+  it("finds the closed and the active stays of a plate", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const first = await entryAt(
+        db,
+        { plate: "TSD100", vehicleType: "CAR", userId: user.id },
+        new Date("2030-03-01T15:00:00.000Z"),
+      );
+      await exitAt(db, first, user.id, new Date("2030-03-01T16:00:00.000Z"));
+      const again = await entryAt(
+        db,
+        { plate: "TSD100", vehicleType: "CAR", userId: user.id },
+        new Date("2030-03-05T15:00:00.000Z"),
+      );
+
+      const response = await getStays(app, "?placa=TSD100", cookie);
+
+      const ours = response.body.estadias.filter(
+        (stay: { placa: string }) => stay.placa === "TSD100",
+      );
+      expect(ours.map((stay: { id: number; estado: string }) => [stay.id, stay.estado])).toEqual([
+        [again, "ACTIVA"],
+        [first, "CERRADA"],
+      ]);
+    });
+  });
+
+  it.each([
+    ["an empty plate", "?placa="],
+    ["a plate of only spaces and hyphens", "?placa=%20-%20"],
+    ["seven characters", "?placa=TSB1234"],
+    ["a percent sign", "?placa=TS%25"],
+    ["an underscore", "?placa=TS_1"],
+    ["the plate twice", "?placa=TSB&placa=TSC"],
+    ["a type in lowercase", "?placa=TSB&tipoVehiculo=carro"],
+    ["the internal type", "?placa=TSB&tipoVehiculo=CAR"],
+    ["a type that does not exist yet", "?placa=TSB&tipoVehiculo=BUS"],
+    ["only the type", "?tipoVehiculo=CARRO"],
+  ])("rejects a history request with %s with 400 ENTRADA_INVALIDA", async (_case, query) => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedInOperator(db);
+
+      const response = await getStays(app, query, cookie);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.codigo).toBe("ENTRADA_INVALIDA");
+    });
+  });
+});
+
 describe("GET /api/estadias query validation (NFR-06)", () => {
   it.each([
     ["no estado", ""],
