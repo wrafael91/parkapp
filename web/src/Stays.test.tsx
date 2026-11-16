@@ -205,7 +205,11 @@ describe("search by plate", () => {
     const user = userEvent.setup();
     renderStays();
     await search(user, "tst-1");
-    expect(screen.getByText("Ningún vehículo dentro coincide con TST1.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Ningún vehículo dentro coincide con TST1. Si ya salió, búscalo en Historial.",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
