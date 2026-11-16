@@ -677,6 +677,53 @@ describe("GET /api/estadias?placa= and tipoVehiculo= (FR-11, FR-18, US-13)", () 
   });
 });
 
+describe("GET /api/estadias history limit (NFR-14)", () => {
+  it("brings the 500 most recent stays and says whether there are more", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      // One stay through the service, to copy its rate and grace period.
+      const first = await entryAt(
+        db,
+        { plate: "TSE000", vehicleType: "CAR", userId: user.id },
+        new Date("2030-04-10T05:00:00.000Z"),
+      );
+      const model = await db.stay.findUniqueOrThrow({ where: { id: first } });
+      // 499 more, one second apart, the newest last: TSE001 to TSE499.
+      await db.stay.createMany({
+        data: Array.from({ length: 499 }, (_, index) => ({
+          plate: `TSE${String(index + 1).padStart(3, "0")}`,
+          vehicleType: model.vehicleType,
+          color: "Gris",
+          entryById: user.id,
+          rateId: model.rateId,
+          gracePeriodId: model.gracePeriodId,
+          periodCapId: model.periodCapId,
+          entryTime: new Date(model.entryTime.getTime() + (index + 1) * 1000),
+        })),
+      });
+
+      const exactly = await getStays(app, "?fecha=2030-04-10", cookie);
+
+      expect(exactly.body.estadias).toHaveLength(500);
+      expect(exactly.body.hayMas).toBe(false);
+
+      // The 501st is the newest, so the oldest one is left out.
+      await entryAt(
+        db,
+        { plate: "TSE500", vehicleType: "CAR", userId: user.id },
+        new Date("2030-04-10T06:00:00.000Z"),
+      );
+
+      const more = await getStays(app, "?fecha=2030-04-10", cookie);
+
+      expect(more.body.estadias).toHaveLength(500);
+      expect(more.body.hayMas).toBe(true);
+      expect(more.body.estadias[0].placa).toBe("TSE500");
+      expect(more.body.estadias[499].placa).toBe("TSE001");
+    });
+  });
+});
+
 describe("GET /api/estadias query validation (NFR-06)", () => {
   it.each([
     ["no estado", ""],
