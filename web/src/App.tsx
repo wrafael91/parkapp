@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
+import History from "./History.tsx";
 import Rates from "./Rates.tsx";
 import Stays from "./Stays.tsx";
 
@@ -58,9 +59,9 @@ export default function App() {
   );
 }
 
-// The bar on top of every screen: the name of the product, the sections an
-// administrator can open and, when there is a session, who signed in and the
-// button to sign out.
+// The bar on top of every screen: the name of the product, the sections of the
+// user's role and, when there is a session, who signed in and the button to
+// sign out.
 function TopBar({ nav, children }: { nav?: ReactNode; children?: ReactNode }) {
   return (
     <header className="topbar">
@@ -126,7 +127,7 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   );
 }
 
-type Section = "operation" | "rates";
+type Section = "operation" | "history" | "rates";
 
 function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -147,18 +148,22 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
     <>
       <TopBar
         nav={
-          // Matrix 1.2: only an administrator configures the rates, so an
-          // operator sees no sections. The API checks the role anyway (NFR-05).
-          user.rol === "ADMINISTRADOR" && (
-            <nav className="topbar-nav" aria-label="Secciones">
-              <SectionButton current={section} section="operation" onSelect={setSection}>
-                Operación
-              </SectionButton>
+          // Matrix 1.2: both roles operate and read the history; only an
+          // administrator configures the rates. The API checks the role anyway
+          // (NFR-05).
+          <nav className="topbar-nav" aria-label="Secciones">
+            <SectionButton current={section} section="operation" onSelect={setSection}>
+              Operación
+            </SectionButton>
+            <SectionButton current={section} section="history" onSelect={setSection}>
+              Historial
+            </SectionButton>
+            {user.rol === "ADMINISTRADOR" && (
               <SectionButton current={section} section="rates" onSelect={setSection}>
                 Tarifas
               </SectionButton>
-            </nav>
-          )
+            )}
+          </nav>
         }
       >
         <p>Sesión iniciada: {user.nombre}</p>
@@ -172,11 +177,9 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
             {error}
           </p>
         )}
-        {section === "rates" ? (
-          <Rates onSessionEnded={onSignedOut} />
-        ) : (
-          <Stays onSessionEnded={onSignedOut} />
-        )}
+        {section === "operation" && <Stays onSessionEnded={onSignedOut} />}
+        {section === "history" && <History onSessionEnded={onSignedOut} />}
+        {section === "rates" && <Rates onSessionEnded={onSignedOut} />}
       </main>
     </>
   );
