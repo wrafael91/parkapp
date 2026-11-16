@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import History from "./History.tsx";
 import { jsonResponse, stubFetch } from "./test-helpers.ts";
@@ -143,5 +144,69 @@ describe("history of a day", () => {
     stubFetch(jsonResponse(401, { error: { codigo: "NO_AUTENTICADO", mensaje: "x" } }));
     renderHistory(onSessionEnded);
     await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("history filters", () => {
+  it("searches with the day, the type and the plate, normalized", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    const fetchMock = stubFetch(jsonResponse(200, NONE), jsonResponse(200, NONE));
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("No hay estadías con esos filtros.");
+    fireEvent.change(screen.getByLabelText("Día"), { target: { value: "2026-11-10" } });
+    await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "Moto");
+    await user.type(screen.getByLabelText("Placa"), "tst-12");
+    await user.click(screen.getByRole("button", { name: "Buscar" }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/estadias?fecha=2026-11-10&placa=TST12&tipoVehiculo=MOTO",
+    );
+  });
+
+  it("empties the day with Todos los días and searches every day by plate", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    const fetchMock = stubFetch(
+      jsonResponse(200, NONE),
+      jsonResponse(200, { estadias: [CLOSED], hayMas: false }),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("No hay estadías con esos filtros.");
+    await user.click(screen.getByRole("button", { name: "Todos los días" }));
+    expect((screen.getByLabelText("Día") as HTMLInputElement).value).toBe("");
+    await user.type(screen.getByLabelText("Placa"), "st 13");
+    await user.click(screen.getByRole("button", { name: "Buscar" }));
+    await screen.findByText("TST130");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/estadias?placa=ST13");
+  });
+
+  it("asks for a day or a plate without asking the API", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    const fetchMock = stubFetch(jsonResponse(200, NONE));
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("No hay estadías con esos filtros.");
+    await user.click(screen.getByRole("button", { name: "Todos los días" }));
+    await user.type(screen.getByLabelText("Placa"), " - ");
+    await user.click(screen.getByRole("button", { name: "Buscar" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Elige un día o escribe una placa.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks to check the plate when the API rejects it", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    stubFetch(
+      jsonResponse(200, NONE),
+      jsonResponse(400, { error: { codigo: "ENTRADA_INVALIDA", mensaje: "x" } }),
+    );
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByText("No hay estadías con esos filtros.");
+    await user.type(screen.getByLabelText("Placa"), "TSB1234");
+    await user.click(screen.getByRole("button", { name: "Buscar" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Revisa la placa: escribe de 1 a 6 letras o números.");
   });
 });
