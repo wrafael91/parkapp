@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import {
   bogotaToday,
   formatDateTime,
   formatPesos,
+  normalizePlateSearch,
   STAY_STATES,
   VEHICLE_TYPES,
   type HistoryStay,
@@ -12,9 +13,12 @@ import {
 // the default fetch, as in App.tsx (docs/modelo-amenazas.md, 7.3).
 const STAYS_URL = "/api/estadias";
 
+type Filters = { fecha: string; placa: string; tipoVehiculo: string };
+
 type Result =
   | { status: "loading" }
   | { status: "failed" }
+  | { status: "rejected"; message: string }
   | { status: "loaded"; stays: HistoryStay[]; hayMas: boolean };
 
 // The history (US-13, first part): the stays of a day in Bogotá, part of a plate
@@ -23,10 +27,21 @@ type Result =
 export default function History({ onSessionEnded }: { onSessionEnded: () => void }) {
   // Today in Bogotá, whatever the time zone of the computer.
   const [fecha, setFecha] = useState(() => bogotaToday(new Date()));
+  const [placa, setPlaca] = useState("");
+  const [tipoVehiculo, setTipoVehiculo] = useState("");
   const [result, setResult] = useState<Result>({ status: "loading" });
 
-  async function search(day: string, signal?: AbortSignal) {
-    const query = new URLSearchParams({ fecha: day });
+  async function search(filters: Filters, signal?: AbortSignal) {
+    const plate = normalizePlateSearch(filters.placa);
+    // Without a day or a plate the API answers 400, so it is not asked.
+    if (filters.fecha === "" && plate === "") {
+      setResult({ status: "rejected", message: "Elige un día o escribe una placa." });
+      return;
+    }
+    const query = new URLSearchParams();
+    if (filters.fecha !== "") query.set("fecha", filters.fecha);
+    if (plate !== "") query.set("placa", plate);
+    if (filters.tipoVehiculo !== "") query.set("tipoVehiculo", filters.tipoVehiculo);
     setResult({ status: "loading" });
     // null when the server cannot be reached or the screen closed.
     const response = await fetch(`${STAYS_URL}?${query}`, { signal }).catch(() => null);
@@ -36,6 +51,11 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
       setResult({ status: "loaded", stays: body.estadias, hayMas: body.hayMas });
     } else if (response?.status === 401) {
       onSessionEnded();
+    } else if (response?.status === 400) {
+      setResult({
+        status: "rejected",
+        message: "Revisa la placa: escribe de 1 a 6 letras o números.",
+      });
     } else {
       setResult({ status: "failed" });
     }
@@ -44,26 +64,64 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
   useEffect(() => {
     // The stays that entered today, when the screen appears.
     const controller = new AbortController();
-    search(fecha, controller.signal);
+    search({ fecha, placa: "", tipoVehiculo: "" }, controller.signal);
     return () => controller.abort();
     // Only once: later searches come from the form.
   }, []);
 
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    search({ fecha, placa, tipoVehiculo });
+  }
+
   return (
     <section className="card">
       <h2>Historial</h2>
-      <form className="history-filters">
+      <form className="history-filters" onSubmit={handleSubmit}>
         <div className="history-day">
           <label>
             Día
             <input type="date" value={fecha} onChange={(event) => setFecha(event.target.value)} />
           </label>
+          <button type="button" className="button-secondary" onClick={() => setFecha("")}>
+            Todos los días
+          </button>
         </div>
+        <label>
+          Tipo de vehículo
+          <select value={tipoVehiculo} onChange={(event) => setTipoVehiculo(event.target.value)}>
+            <option value="">Todos</option>
+            {Object.entries(VEHICLE_TYPES).map(([value, name]) => (
+              <option key={value} value={value}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="plate-search">
+          Placa
+          <input
+            type="search"
+            value={placa}
+            onChange={(event) => setPlaca(event.target.value)}
+            maxLength={20}
+            autoComplete="off"
+            autoCapitalize="characters"
+          />
+        </label>
+        <button type="submit" className="button-primary" disabled={result.status === "loading"}>
+          Buscar
+        </button>
       </form>
       {result.status === "loading" && <p className="muted">Cargando…</p>}
       {result.status === "failed" && (
         <p role="alert" className="alert">
           No se pudo cargar el historial.
+        </p>
+      )}
+      {result.status === "rejected" && (
+        <p role="alert" className="alert">
+          {result.message}
         </p>
       )}
       {result.status === "loaded" && result.stays.length === 0 && (
