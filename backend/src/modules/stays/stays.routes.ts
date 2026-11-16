@@ -81,6 +81,9 @@ function bogotaDay(day: string) {
   return { gte: start, lt: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+// The most recent stays of a search (NFR-14): a full day of 300 vehicles fits.
+const HISTORY_LIMIT = 500;
+
 // A stay id: a positive integer, without leading zeros, that fits in the
 // INTEGER column. Anything else is a 400, not a database error.
 const exitParams = z.object({
@@ -209,6 +212,7 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         return { kind: "listed", stays } as const;
       }
       const { fecha, placa, tipoVehiculo } = query.data;
+      // One more than the limit, to know whether there are more.
       const stays = await db.stay.findMany({
         where: {
           entryTime: fecha === undefined ? undefined : bogotaDay(fecha),
@@ -216,6 +220,7 @@ export function createStaysRouter(prisma: PrismaClient): Router {
           vehicleType: tipoVehiculo === undefined ? undefined : VEHICLE_TYPES[tipoVehiculo],
         },
         orderBy: [{ entryTime: "desc" }, { id: "desc" }],
+        take: HISTORY_LIMIT + 1,
         include: { receipt: true },
       });
       return { kind: "history", stays } as const;
@@ -232,7 +237,10 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         res.status(200).json({ estadias: outcome.stays.map(toEstadia) });
         return;
       case "history":
-        res.status(200).json({ estadias: outcome.stays.map(toHistorial) });
+        res.status(200).json({
+          estadias: outcome.stays.slice(0, HISTORY_LIMIT).map(toHistorial),
+          hayMas: outcome.stays.length > HISTORY_LIMIT,
+        });
     }
   });
 
