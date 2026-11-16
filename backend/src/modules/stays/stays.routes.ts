@@ -53,8 +53,22 @@ const calendarDay = z
     return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(day);
   });
 
-// The history (FR-18, US-13): the stays that entered on a day.
-const historyQuery = z.strictObject({ fecha: calendarDay });
+// FR-08 without the format check, so part of a plate can be searched (FR-11):
+// uppercase, without spaces or hyphens, and then 1 to 6 letters or digits.
+const plateSearch = z
+  .string()
+  .transform((plate) => plate.toUpperCase().replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^[A-Z0-9]{1,6}$/));
+
+// The history (FR-18, US-13): a day, part of a plate or both, and the vehicle
+// type. Without a day or a plate it would bring back every stay, so it is a 400.
+const historyQuery = z
+  .strictObject({
+    fecha: calendarDay.optional(),
+    placa: plateSearch.optional(),
+    tipoVehiculo: z.enum(["CARRO", "MOTO"]).optional(),
+  })
+  .refine((query) => query.fecha !== undefined || query.placa !== undefined);
 
 // Mixing estado with the history filters matches neither, so it is a 400.
 const listQuery = z.union([activeQuery, historyQuery]);
@@ -194,8 +208,13 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         });
         return { kind: "listed", stays } as const;
       }
+      const { fecha, placa, tipoVehiculo } = query.data;
       const stays = await db.stay.findMany({
-        where: { entryTime: bogotaDay(query.data.fecha) },
+        where: {
+          entryTime: fecha === undefined ? undefined : bogotaDay(fecha),
+          plate: placa === undefined ? undefined : { contains: placa },
+          vehicleType: tipoVehiculo === undefined ? undefined : VEHICLE_TYPES[tipoVehiculo],
+        },
         orderBy: [{ entryTime: "desc" }, { id: "desc" }],
         include: { receipt: true },
       });
