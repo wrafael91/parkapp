@@ -82,3 +82,18 @@ de los errores, para no cambiar después la aplicación web y las pruebas.
   pero evitan problemas de codificación en las URL y en los clientes.
 - `ACCESO_DENEGADO` es a la vez el código de error del 403 y la acción de
   auditoría que registra ese rechazo (NFR-05).
+
+## Actualización del 15 de noviembre de 2026
+
+Los filtros por día de calendario, como `fecha` en el historial de estadías
+(S3-06, US-13), se interpretan en la hora de Bogotá, la misma en que la
+aplicación web muestra las horas (decisión 5). Colombia está en UTC−5 todo el
+año, sin horario de verano desde 1993, así que el día `2026-11-15` va desde
+`2026-11-15T05:00:00.000Z` hasta antes de `2026-11-16T05:00:00.000Z`. La API
+calcula ese rango con el desfase fijo y lo compara con las columnas guardadas
+en UTC: la consulta no depende de la zona horaria de la sesión, y la base sigue
+en UTC (`docs/arquitectura.md`, sección 6.2). La fecha viaja como
+`AAAA-MM-DD`, y una fecha imposible, como `2026-02-30`, es un 400
+`ENTRADA_INVALIDA`.
+
+La decisión no cambia: las horas siguen viajando en UTC.
