@@ -49,6 +49,41 @@
   text-transform: uppercase;
 }
 
+/* The history filters: one under the other on a phone, in a row on a wide
+   screen. The buttons line up with the fields, not with their labels. */
+.history-filters {
+  display: grid;
+  gap: 0 1rem;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}
+
+.history-day {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.history-day label {
+  flex: 1;
+}
+
+.history-day .button-secondary {
+  margin-bottom: 1rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 48rem) {
+  .history-filters {
+    grid-template-columns: minmax(17rem, auto) 11rem minmax(10rem, 1fr) auto;
+  }
+
+  .history-filters .button-primary {
+    width: auto;
+    margin: 0 0 1rem;
+  }
+}
+
 /* Buttons: filled for the main action, outlined for the others. */
 .button-primary,
 .button-secondary,

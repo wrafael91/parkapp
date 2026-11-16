@@ -104,7 +104,7 @@
   }
 }
 
-/* The brand and, for an administrator, the sections (Image 4 of the article). */
+/* The brand and the sections of the role (Image 4 of the article). */
 .topbar-start {
   display: flex;
   flex-wrap: wrap;
