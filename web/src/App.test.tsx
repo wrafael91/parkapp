@@ -221,15 +221,42 @@ describe("sections (matrix 1.2)", () => {
     expect(screen.queryByRole("heading", { name: "Tarifa por minuto" })).toBeNull();
   });
 
-  it("shows an operator no sections, so no Tarifas", async () => {
+  it("shows an administrator Operación, Historial and Tarifas", async () => {
+    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS));
+    render(<App />);
+
+    const sections = await screen.findByRole("navigation", { name: "Secciones" });
+    const names = within(sections)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(names).toEqual(["Operación", "Historial", "Tarifas"]);
+  });
+
+  // Requirements 1.3, decision 5: the operator also reads the history.
+  it("lets an operator switch between Operación and Historial, without Tarifas", async () => {
     stubFetch(
       jsonResponse(200, { usuario: { ...ACTIVE_SESSION.usuario, rol: "OPERADOR" } }),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, { estadias: [], hayMas: false }),
+      jsonResponse(200, NO_STAYS),
     );
+    const user = userEvent.setup();
     render(<App />);
-
+    const sections = await screen.findByRole("navigation", { name: "Secciones" });
+    const names = within(sections)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(names).toEqual(["Operación", "Historial"]);
     await screen.findByText("No hay vehículos dentro.");
-    expect(screen.queryByRole("navigation", { name: "Secciones" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Tarifas" })).toBeNull();
+
+    await user.click(within(sections).getByRole("button", { name: "Historial" }));
+
+    await screen.findByRole("heading", { name: "Historial" });
+    expect(screen.queryByRole("heading", { name: "Registrar ingreso" })).toBeNull();
+
+    await user.click(within(sections).getByRole("button", { name: "Operación" }));
+
+    await screen.findByRole("heading", { name: "Registrar ingreso" });
+    expect(screen.queryByRole("heading", { name: "Historial" })).toBeNull();
   });
 });
