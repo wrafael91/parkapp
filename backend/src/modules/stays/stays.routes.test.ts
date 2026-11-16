@@ -8,6 +8,7 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { hashSessionToken } from "../accounts/session-token.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
+import { registerExit } from "./exit.service.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -389,6 +390,180 @@ describe("GET /api/estadias?estado=ACTIVA (FR-10, US-07)", () => {
       expect(response.body).toEqual({
         error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." },
       });
+    });
+  });
+});
+
+// An administrator with an active session. The rates come from signedInOperator.
+async function signedInAdministrator(db: Prisma.TransactionClient) {
+  const admin = await db.user.create({
+    data: {
+      name: "Administrador del historial",
+      email: "admin.historial@example.com",
+      passwordHash: "not-a-real-hash",
+      role: "ADMINISTRATOR",
+    },
+  });
+  await db.session.create({
+    data: {
+      userId: admin.id,
+      tokenHash: hashSessionToken(ADMIN_TOKEN),
+      ip: IP,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+  return { admin, cookie: `sesion=${ADMIN_TOKEN}` };
+}
+
+const ADMIN_TOKEN = "token-de-prueba-del-historial-de-estadias-01";
+
+// Registers the exit at a given time, with its receipt, without the route.
+async function exitAt(db: Prisma.TransactionClient, stayId: number, userId: number, at: Date) {
+  const result = await registerExit(db, { stayId, userId, ip: IP, now: at });
+  if (!result.ok) throw new Error("setup failed");
+  return db.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+}
+
+// The ids of a history answer that belong to the given stays, in order. A
+// development database may have other stays.
+function idsAmong(body: { estadias: { id: number }[] }, ids: number[]) {
+  return body.estadias.map((stay) => stay.id).filter((id) => ids.includes(id));
+}
+
+// The days of these tests are in 2030, after the rates of signedInOperator
+// start, so registerEntry accepts them.
+describe("GET /api/estadias?fecha= (FR-18, US-13)", () => {
+  it("lists the stays that entered on a day in Bogotá, in every state", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const { admin } = await signedInAdministrator(db);
+      // November 15 in Bogotá runs from 05:00 UTC to 05:00 UTC the next day.
+      const before = await entryAt(
+        db,
+        { plate: "TSA001", vehicleType: "CAR", userId: user.id },
+        new Date("2030-01-15T04:59:59.999Z"),
+      );
+      const closed = await entryAt(
+        db,
+        { plate: "TSA002", vehicleType: "CAR", brand: "Mazda", userId: user.id },
+        new Date("2030-01-15T05:00:00.000Z"),
+      );
+      const receipt = await exitAt(db, closed, user.id, new Date("2030-01-15T05:30:00.000Z"));
+      const voided = await entryAt(
+        db,
+        { plate: "TSA003", vehicleType: "CAR", userId: user.id },
+        new Date("2030-01-15T12:00:00.000Z"),
+      );
+      await db.stay.update({
+        where: { id: voided },
+        data: {
+          status: "VOIDED",
+          voidedAt: new Date("2030-01-15T12:10:00.000Z"),
+          voidedById: admin.id,
+          voidReason: "Prueba",
+        },
+      });
+      const inside = await entryAt(
+        db,
+        { plate: "TSA04A", vehicleType: "MOTORCYCLE", userId: user.id },
+        new Date("2030-01-16T04:59:59.999Z"),
+      );
+      const after = await entryAt(
+        db,
+        { plate: "TSA005", vehicleType: "CAR", userId: user.id },
+        new Date("2030-01-16T05:00:00.000Z"),
+      );
+
+      const response = await getStays(app, "?fecha=2030-01-15", cookie);
+
+      expect(response.status).toBe(200);
+      expect(idsAmong(response.body, [before, after])).toEqual([]);
+      expect(response.body.estadias).toEqual([
+        {
+          id: inside,
+          placa: "TSA04A",
+          tipoVehiculo: "MOTO",
+          color: "Gris",
+          marca: null,
+          horaIngreso: "2030-01-16T04:59:59.999Z",
+          horaSalida: null,
+          estado: "ACTIVA",
+          comprobante: null,
+        },
+        {
+          id: voided,
+          placa: "TSA003",
+          tipoVehiculo: "CARRO",
+          color: "Gris",
+          marca: null,
+          horaIngreso: "2030-01-15T12:00:00.000Z",
+          horaSalida: null,
+          estado: "ANULADA",
+          comprobante: null,
+        },
+        {
+          id: closed,
+          placa: "TSA002",
+          tipoVehiculo: "CARRO",
+          color: "Gris",
+          marca: "Mazda",
+          horaIngreso: "2030-01-15T05:00:00.000Z",
+          horaSalida: "2030-01-15T05:30:00.000Z",
+          estado: "CERRADA",
+          comprobante: { consecutivo: receipt.number, total: receipt.total },
+        },
+      ]);
+    });
+  });
+
+  // Requirements, section 1.3, decision 5: both roles read the history.
+  it("answers an administrator the same as an operator", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const admin = await signedInAdministrator(db);
+      const stay = await entryAt(
+        db,
+        { plate: "TSA011", vehicleType: "CAR", userId: user.id },
+        new Date("2030-01-20T15:00:00.000Z"),
+      );
+
+      const asOperator = await getStays(app, "?fecha=2030-01-20", cookie);
+      const asAdministrator = await getStays(app, "?fecha=2030-01-20", admin.cookie);
+
+      expect(asOperator.status).toBe(200);
+      expect(asAdministrator.status).toBe(200);
+      expect(asAdministrator.body).toEqual(asOperator.body);
+      expect(idsAmong(asAdministrator.body, [stay])).toEqual([stay]);
+    });
+  });
+
+  it.each([
+    ["a day without leading zeros", "?fecha=2030-1-5"],
+    ["a day that does not exist", "?fecha=2030-02-30"],
+    ["a day in another format", "?fecha=15/01/2030"],
+    ["a day with a time", "?fecha=2030-01-15T00:00"],
+    ["an empty day", "?fecha="],
+    ["the day twice", "?fecha=2030-01-15&fecha=2030-01-16"],
+    ["estado with a day", "?estado=ACTIVA&fecha=2030-01-15"],
+    ["an unknown field", "?fecha=2030-01-15&operador=1"],
+    ["an unknown field with estado", "?estado=ACTIVA&operador=1"],
+  ])("rejects a history request with %s with 400 ENTRADA_INVALIDA", async (_case, query) => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedInOperator(db);
+
+      const response = await getStays(app, query, cookie);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.codigo).toBe("ENTRADA_INVALIDA");
+    });
+  });
+
+  it("answers 401 before validating the day of a request without a session", async () => {
+    await withApp(async (app) => {
+      const response = await getStays(app, "?fecha=2030-02-30");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
     });
   });
 });
