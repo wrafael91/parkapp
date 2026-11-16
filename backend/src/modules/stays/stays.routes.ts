@@ -6,6 +6,7 @@ import type {
   Rate,
   Receipt,
   Stay,
+  StayStatus,
   VehicleType,
 } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
@@ -23,6 +24,11 @@ const VEHICLE_TYPE_NAMES = { CAR: "CARRO", MOTORCYCLE: "MOTO" } as const satisfi
   VehicleType,
   string
 >;
+const STAY_STATUS_NAMES = {
+  ACTIVE: "ACTIVA",
+  CLOSED: "CERRADA",
+  VOIDED: "ANULADA",
+} as const satisfies Record<StayStatus, string>;
 
 // ADR 0008: the contract is in Spanish, and this module translates it. Unknown
 // fields are dropped, horaIngreso included: the server sets the time (BR-16).
@@ -33,9 +39,50 @@ const entryBody = z.object({
   marca: z.string().trim().max(40).nullish(),
 });
 
-// Only the vehicles inside for now (FR-10). Any other value, or none, is a 400,
-// so a later list of closed stays does not change what a request means.
-const listQuery = z.object({ estado: z.literal("ACTIVA") });
+// The vehicles inside (FR-10): estado=ACTIVA and nothing else.
+const activeQuery = z.strictObject({ estado: z.literal("ACTIVA") });
+
+// A calendar day that exists: 2026-02-30 is not one. Zod 4 runs the refine even
+// when the regex failed, so an invalid date must not reach toISOString, which
+// would throw a RangeError and answer 500.
+const calendarDay = z
+  .string()
+  .regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)
+  .refine((day) => {
+    const date = new Date(`${day}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(day);
+  });
+
+// FR-08 without the format check, so part of a plate can be searched (FR-11):
+// uppercase, without spaces or hyphens, and then 1 to 6 letters or digits.
+const plateSearch = z
+  .string()
+  .transform((plate) => plate.toUpperCase().replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^[A-Z0-9]{1,6}$/));
+
+// The history (FR-18, US-13): a day, part of a plate or both, and the vehicle
+// type. Without a day or a plate it would bring back every stay, so it is a 400.
+const historyQuery = z
+  .strictObject({
+    fecha: calendarDay.optional(),
+    placa: plateSearch.optional(),
+    tipoVehiculo: z.enum(["CARRO", "MOTO"]).optional(),
+  })
+  .refine((query) => query.fecha !== undefined || query.placa !== undefined);
+
+// Mixing estado with the history filters matches neither, so it is a 400.
+const listQuery = z.union([activeQuery, historyQuery]);
+
+// ADR 0008, update of November 15: Colombia is on UTC-5 all year, so a day in
+// Bogotá runs from 05:00 UTC to 05:00 UTC the next day. The range is compared
+// with the UTC columns, without depending on the time zone of the session.
+function bogotaDay(day: string) {
+  const start = new Date(`${day}T00:00:00.000-05:00`);
+  return { gte: start, lt: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
+// The most recent stays of a search (NFR-14): a full day of 300 vehicles fits.
+const HISTORY_LIMIT = 500;
 
 // A stay id: a positive integer, without leading zeros, that fits in the
 // INTEGER column. Anything else is a 400, not a database error.
@@ -56,6 +103,19 @@ function toEstadia(stay: Stay) {
     color: stay.color,
     marca: stay.brand,
     horaIngreso: stay.entryTime.toISOString(),
+  };
+}
+
+// A stay of the history: every state, with its exit and its receipt, if any.
+function toHistorial(stay: Stay & { receipt: Receipt | null }) {
+  return {
+    ...toEstadia(stay),
+    horaSalida: stay.exitTime?.toISOString() ?? null,
+    estado: STAY_STATUS_NAMES[stay.status],
+    comprobante:
+      stay.receipt === null
+        ? null
+        : { consecutivo: stay.receipt.number, total: stay.receipt.total },
   };
 }
 
@@ -134,7 +194,8 @@ export function createStaysRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // FR-10: the vehicles inside, newest first. The search comes in Sprint 3.
+  // FR-10: the vehicles inside, newest first. FR-18: the history, for operators
+  // and administrators (requirements, section 1.3, decision 5).
   router.get("/", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
     const query = listQuery.safeParse(req.query);
@@ -143,11 +204,26 @@ export function createStaysRouter(prisma: PrismaClient): Router {
       const user = token === null ? null : await authenticate(db, { token, now });
       if (user === null) return { kind: "unauthenticated" } as const;
       if (!query.success) return { kind: "invalid" } as const;
+      if ("estado" in query.data) {
+        const stays = await db.stay.findMany({
+          where: { status: "ACTIVE" },
+          orderBy: [{ entryTime: "desc" }, { id: "desc" }],
+        });
+        return { kind: "listed", stays } as const;
+      }
+      const { fecha, placa, tipoVehiculo } = query.data;
+      // One more than the limit, to know whether there are more.
       const stays = await db.stay.findMany({
-        where: { status: "ACTIVE" },
+        where: {
+          entryTime: fecha === undefined ? undefined : bogotaDay(fecha),
+          plate: placa === undefined ? undefined : { contains: placa },
+          vehicleType: tipoVehiculo === undefined ? undefined : VEHICLE_TYPES[tipoVehiculo],
+        },
         orderBy: [{ entryTime: "desc" }, { id: "desc" }],
+        take: HISTORY_LIMIT + 1,
+        include: { receipt: true },
       });
-      return { kind: "listed", stays } as const;
+      return { kind: "history", stays } as const;
     });
 
     switch (outcome.kind) {
@@ -159,6 +235,12 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         return;
       case "listed":
         res.status(200).json({ estadias: outcome.stays.map(toEstadia) });
+        return;
+      case "history":
+        res.status(200).json({
+          estadias: outcome.stays.slice(0, HISTORY_LIMIT).map(toHistorial),
+          hayMas: outcome.stays.length > HISTORY_LIMIT,
+        });
     }
   });
 
