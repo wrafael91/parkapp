@@ -1,7 +1,7 @@
 import { useEffect, useState, type SubmitEvent } from "react";
 import { formatDateTime } from "./stay.ts";
 
-// GET and POST /api/usuarios (ADR 0008),
+// GET and POST /api/usuarios and POST /api/usuarios/{id}/estado (ADR 0008),
 // with a relative URL and the default fetch, as in App.tsx: the browser sends
 // the session cookie by itself (docs/modelo-amenazas.md, 7.3).
 const USERS_URL = "/api/usuarios";
@@ -29,8 +29,12 @@ const ROLES = { ADMINISTRADOR: "Administrador", OPERADOR: "Operador" };
 export default function Accounts({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [list, setList] = useState<List>({ status: "loading" });
   const [createNote, setCreateNote] = useState<Note>(null);
+  const [listNote, setListNote] = useState<Note>(null);
   const [creating, setCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // The account whose state is changing, so its button waits.
+  const [changingId, setChangingId] = useState<number | null>(null);
+
   useEffect(() => {
     // Loads once, when the screen appears.
     const controller = new AbortController();
@@ -101,6 +105,36 @@ export default function Accounts({ onSessionEnded }: { onSessionEnded: () => voi
     setCreateNote({ kind: "error", text: createError(response?.status) });
   }
 
+  async function changeState(user: Usuario) {
+    const activa = !user.activa;
+    setChangingId(user.id);
+    const response = await fetch(`${USERS_URL}/${user.id}/estado`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activa }),
+    }).catch(() => null);
+    setChangingId(null);
+    if (response?.ok) {
+      const changed: Usuario = await response.json();
+      replace(changed);
+      setListNote({
+        kind: "saved",
+        text: changed.activa
+          ? `Cuenta reactivada: ${changed.correo}.`
+          : `Cuenta desactivada: ${changed.correo}. Sus sesiones se cerraron.`,
+      });
+      return;
+    }
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    const body = response === null ? null : await response.json().catch(() => null);
+    // Already in that state: the screen was behind, so it shows the real state.
+    if (body?.error?.codigo === "CUENTA_YA_EN_ESE_ESTADO") replace({ ...user, activa });
+    setListNote({ kind: "error", text: stateError(response?.status, body?.error?.codigo) });
+  }
+
   return (
     <div className="operation">
       <section className="card">
@@ -141,6 +175,7 @@ export default function Accounts({ onSessionEnded }: { onSessionEnded: () => voi
       </section>
       <section className="card">
         <h2>Cuentas</h2>
+        <NoteLine note={listNote} />
         {list.status === "loading" && <p className="muted">Cargando…</p>}
         {list.status === "failed" && (
           <p role="alert" className="alert">
@@ -180,6 +215,8 @@ export default function Accounts({ onSessionEnded }: { onSessionEnded: () => voi
                         <button
                           type="button"
                           className="button-secondary"
+                          disabled={changingId === user.id}
+                          onClick={() => changeState(user)}
                           aria-label={`${user.activa ? "Desactivar" : "Reactivar"} ${user.correo}`}
                         >
                           {user.activa ? "Desactivar" : "Reactivar"}
@@ -210,8 +247,8 @@ function NoteLine({ note }: { note: Note }) {
   );
 }
 
-// The page reads the API's status (ADR 0008, decision 6) and writes its own
-// message.
+// The page reads the API's status or error code (ADR 0008, decision 6) and
+// writes its own message.
 function createError(status: number | undefined): string {
   switch (status) {
     case 400:
@@ -222,5 +259,22 @@ function createError(status: number | undefined): string {
       return "Ya existe una cuenta con ese correo.";
     default:
       return "No se pudo crear la cuenta. Intenta de nuevo.";
+  }
+}
+
+function stateError(status: number | undefined, codigo: string | undefined): string {
+  switch (codigo) {
+    case "CUENTA_YA_EN_ESE_ESTADO":
+      return "La cuenta ya estaba en ese estado.";
+    case "CUENTA_NO_OPERADOR":
+      return "Solo las cuentas de operador se desactivan o reactivan.";
+  }
+  switch (status) {
+    case 403:
+      return "Solo un administrador puede cambiar el estado de las cuentas.";
+    case 404:
+      return "La cuenta ya no existe.";
+    default:
+      return "No se pudo cambiar el estado de la cuenta. Intenta de nuevo.";
   }
 }
