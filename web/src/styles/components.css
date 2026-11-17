@@ -84,6 +84,19 @@
   }
 }
 
+/* A message under a form keeps its distance from the button, and a long word
+   in a message, such as an email, wraps inside the card instead of sticking
+   out of it ("Cuenta creada: …"). */
+form + .saved,
+form + .alert {
+  margin: 1rem 0 0;
+}
+
+.saved,
+.alert {
+  overflow-wrap: anywhere;
+}
+
 /* A checkbox with its text on the same line, such as "Mostrar contraseña". */
 label.checkbox {
   display: flex;
