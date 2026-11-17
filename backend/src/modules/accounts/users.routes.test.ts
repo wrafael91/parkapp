@@ -298,3 +298,218 @@ describe("access to /api/usuarios (NFR-05, matrix 1.2)", () => {
     });
   });
 });
+
+// An operator with an open session of its own, as on another computer.
+const OPERATOR_TOKEN = "token-de-prueba-del-operador-de-las-cuentas";
+
+async function operatorSignedIn(db: Prisma.TransactionClient, adminId: number) {
+  const created = await createOperator(db, {
+    name: "Operador de las rutas",
+    email: EMAIL,
+    password: PASSWORD,
+    now: new Date(),
+    createdBy: { userId: adminId, ip: IP },
+  });
+  if (!created.ok) throw new Error("setup failed");
+  await db.session.create({
+    data: {
+      userId: created.userId,
+      tokenHash: hashSessionToken(OPERATOR_TOKEN),
+      ip: IP,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+  return { id: created.userId, cookie: `sesion=${OPERATOR_TOKEN}` };
+}
+
+function stateUrl(id: number | string) {
+  return `${URL}/${id}/estado`;
+}
+
+// What the operator sees on its next request.
+function operatorList(app: Express, cookie: string) {
+  return request(app)
+    .get("/api/estadias?estado=ACTIVA")
+    .set("X-Forwarded-For", IP)
+    .set("Cookie", cookie);
+}
+
+describe("POST /api/usuarios/{id}/estado (US-03, FR-04)", () => {
+  it("deactivates an operator, whose next request answers 401, and logs it (NFR-04)", async () => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const operator = await operatorSignedIn(db, admin.id);
+      expect((await operatorList(app, operator.cookie)).status).toBe(200);
+
+      const response = await post(app, stateUrl(operator.id), cookie, { activa: false });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ id: operator.id, rol: "OPERADOR", activa: false });
+      expect((await operatorList(app, operator.cookie)).status).toBe(401);
+      const events = await db.auditEvent.findMany({
+        where: { action: "ACCOUNT_DEACTIVATED", entity: "usuario", entityId: operator.id },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ userId: admin.id, ip: IP });
+    });
+  });
+
+  it("reactivates an operator, who signs in again while the old session stays closed", async () => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const operator = await operatorSignedIn(db, admin.id);
+      await post(app, stateUrl(operator.id), cookie, { activa: false });
+
+      const response = await post(app, stateUrl(operator.id), cookie, { activa: true });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ id: operator.id, activa: true });
+      expect((await operatorList(app, operator.cookie)).status).toBe(401);
+      expect(
+        (await signIn(db, { email: EMAIL, password: PASSWORD, ip: IP, now: new Date() })).ok,
+      ).toBe(true);
+      const events = await db.auditEvent.count({
+        where: { action: "ACCOUNT_REACTIVATED", entity: "usuario", entityId: operator.id },
+      });
+      expect(events).toBe(1);
+    });
+  });
+
+  it("keeps the account and what it registered (BR-12)", async () => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const operator = await operatorSignedIn(db, admin.id);
+      const sessionsBefore = await db.session.count({ where: { userId: operator.id } });
+
+      const response = await post(app, stateUrl(operator.id), cookie, { activa: false });
+
+      expect(response.status).toBe(200);
+      expect(await db.user.findUnique({ where: { id: operator.id } })).not.toBeNull();
+      expect(await db.session.count({ where: { userId: operator.id } })).toBe(sessionsBefore);
+      expect(
+        await db.auditEvent.count({ where: { action: "ACCOUNT_CREATED", entityId: operator.id } }),
+      ).toBe(1);
+    });
+  });
+
+  it.each([
+    ["deactivating an account already deactivated", false],
+    ["reactivating an account already active", true],
+  ])("answers 409 CUENTA_YA_EN_ESE_ESTADO %s", async (_case, activa) => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const operator = await operatorSignedIn(db, admin.id);
+      if (!activa) await post(app, stateUrl(operator.id), cookie, { activa: false });
+
+      const response = await post(app, stateUrl(operator.id), cookie, { activa });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: { codigo: "CUENTA_YA_EN_ESE_ESTADO", mensaje: "La cuenta ya estaba en ese estado." },
+      });
+    });
+  });
+
+  it("answers 409 CUENTA_NO_OPERADOR for an administrator account, even its own", async () => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await post(app, stateUrl(admin.id), cookie, { activa: false });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: {
+          codigo: "CUENTA_NO_OPERADOR",
+          mensaje: "Solo las cuentas de operador se desactivan o reactivan.",
+        },
+      });
+      expect((await db.user.findUniqueOrThrow({ where: { id: admin.id } })).active).toBe(true);
+      expect((await get(app, cookie)).status).toBe(200);
+    });
+  });
+
+  it("answers 404 NO_ENCONTRADO for an account that does not exist", async () => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await post(app, stateUrl(2_147_483_647), cookie, { activa: false });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        error: { codigo: "NO_ENCONTRADO", mensaje: "La cuenta no existe." },
+      });
+    });
+  });
+
+  it.each([
+    ["the id 0", "0", { activa: false }],
+    ["an id with a leading zero", "01", { activa: false }],
+    ["an id that is not a number", "abc", { activa: false }],
+    ["an id above INTEGER", "2147483648", { activa: false }],
+    ["an empty body", "1", {}],
+    ["activa as text", "1", { activa: "false" }],
+    ["an unknown field", "1", { activa: false, rol: "ADMINISTRADOR" }],
+  ])("rejects %s with 400 ENTRADA_INVALIDA", async (_case, id, body) => {
+    await withApp(async (app, db) => {
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await post(app, stateUrl(id), cookie, body);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.codigo).toBe("ENTRADA_INVALIDA");
+    });
+  });
+
+  it("answers 401 without a session, before validating", async () => {
+    await withApp(async (app) => {
+      const response = await post(app, stateUrl("abc"), undefined, {});
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.codigo).toBe("NO_AUTENTICADO");
+    });
+  });
+
+  it("answers 403 to an operator before validating, logs it and changes nothing", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedIn(db, "OPERATOR");
+      const other = await db.user.create({
+        data: {
+          name: "Otro operador",
+          email: "otro.rutas@example.com",
+          passwordHash: "not-a-real-hash",
+          role: "OPERATOR",
+        },
+      });
+
+      const invalid = await post(app, stateUrl("abc"), cookie, {});
+      const valid = await post(app, stateUrl(other.id), cookie, { activa: false });
+
+      expect([invalid.status, valid.status]).toEqual([403, 403]);
+      expect((await db.user.findUniqueOrThrow({ where: { id: other.id } })).active).toBe(true);
+      const events = await db.auditEvent.findMany({
+        where: { action: "ACCESS_DENIED", userId: user.id },
+      });
+      expect(events.map((event) => event.detail)).toEqual([
+        { metodo: "POST", ruta: stateUrl("abc") },
+        { metodo: "POST", ruta: stateUrl(other.id) },
+      ]);
+    });
+  });
+
+  it("answers 403 ORIGEN_NO_PERMITIDO without Origin and changes nothing", async () => {
+    await withApp(async (app, db) => {
+      const { user: admin, cookie } = await signedIn(db, "ADMINISTRATOR");
+      const operator = await operatorSignedIn(db, admin.id);
+
+      const response = await request(app)
+        .post(stateUrl(operator.id))
+        .set("X-Forwarded-For", IP)
+        .set("Cookie", cookie)
+        .send({ activa: false });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.codigo).toBe("ORIGEN_NO_PERMITIDO");
+      expect((await db.user.findUniqueOrThrow({ where: { id: operator.id } })).active).toBe(true);
+    });
+  });
+});
