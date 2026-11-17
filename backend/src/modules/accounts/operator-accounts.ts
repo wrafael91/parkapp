@@ -77,8 +77,32 @@ export type SetAccountActiveResult =
 // account. Accounts are never deleted, so every record keeps who made it
 // (BR-02, BR-12).
 export async function setAccountActive(
-  _db: Db,
-  _input: SetAccountActiveInput,
+  db: Db,
+  input: SetAccountActiveInput,
 ): Promise<SetAccountActiveResult> {
-  throw new Error("Not implemented");
+  const user = await db.user.findUnique({ where: { id: input.userId } });
+  if (user === null) return { ok: false, reason: "notFound" };
+  // Only operator accounts, so the only administrator cannot lock himself out.
+  if (user.role !== "OPERATOR") return { ok: false, reason: "notOperator" };
+  if (user.active === input.active) return { ok: false, reason: "alreadyInState" };
+  await db.user.update({ where: { id: user.id }, data: { active: input.active } });
+  if (!input.active) {
+    // NFR-04: the open sessions end now. Authentication already rejects an
+    // inactive account; revoking them keeps a reactivation from reviving them.
+    await db.session.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: input.now },
+    });
+  }
+  await db.auditEvent.create({
+    data: {
+      action: input.active ? "ACCOUNT_REACTIVATED" : "ACCOUNT_DEACTIVATED",
+      userId: input.changedBy.userId,
+      entity: "usuario",
+      entityId: user.id,
+      ip: input.changedBy.ip,
+      occurredAt: input.now,
+    },
+  });
+  return { ok: true };
 }
