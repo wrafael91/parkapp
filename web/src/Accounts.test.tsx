@@ -199,3 +199,111 @@ describe("create an operator account (US-02)", () => {
     await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
   });
 });
+
+describe("deactivate and reactivate an operator account (US-03)", () => {
+  it("deactivates an operator and shows the new state", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, USERS),
+      jsonResponse(200, { ...OPERATOR, activa: false }),
+    );
+    const user = userEvent.setup();
+    renderAccounts();
+    await user.click(
+      await screen.findByRole("button", { name: "Desactivar operadora@example.com" }),
+    );
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toBe(
+      "Cuenta desactivada: operadora@example.com. Sus sesiones se cerraron.",
+    );
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe("/api/usuarios/7/estado");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ activa: false });
+    expect(rows()[1].slice(3)).toEqual(["Inactiva", "16/11/2026", "Reactivar"]);
+  });
+
+  it("reactivates an operator", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, USERS),
+      jsonResponse(200, { ...INACTIVE, activa: true }),
+    );
+    const user = userEvent.setup();
+    renderAccounts();
+    await user.click(await screen.findByRole("button", { name: "Reactivar anterior@example.com" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toBe("Cuenta reactivada: anterior@example.com.");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ activa: true });
+    expect(rows()[2].slice(3, 4)).toEqual(["Activa"]);
+  });
+
+  it("disables the button while waiting", async () => {
+    let answer: (response: Response) => void = () => {};
+    const fetchMock = stubFetch(jsonResponse(200, USERS));
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    const user = userEvent.setup();
+    renderAccounts();
+    const button = await screen.findByRole("button", { name: "Desactivar operadora@example.com" });
+    await user.click(button);
+
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    answer(jsonResponse(200, { ...OPERATOR, activa: false }));
+    expect(
+      await screen.findByRole("button", { name: "Reactivar operadora@example.com" }),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("shows the real state when the account was already in that state", async () => {
+    stubFetch(jsonResponse(200, USERS), jsonResponse(409, apiError("CUENTA_YA_EN_ESE_ESTADO")));
+    const user = userEvent.setup();
+    renderAccounts();
+    await user.click(
+      await screen.findByRole("button", { name: "Desactivar operadora@example.com" }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("La cuenta ya estaba en ese estado.");
+    expect(rows()[1][3]).toBe("Inactiva");
+  });
+
+  it.each([
+    [
+      "the account no longer exists",
+      jsonResponse(404, apiError("NO_ENCONTRADO")),
+      "La cuenta ya no existe.",
+    ],
+    [
+      "the server fails",
+      jsonResponse(500, apiError("ERROR_INTERNO")),
+      "No se pudo cambiar el estado de la cuenta. Intenta de nuevo.",
+    ],
+    [
+      "the server cannot be reached",
+      new TypeError("Failed to fetch"),
+      "No se pudo cambiar el estado de la cuenta. Intenta de nuevo.",
+    ],
+  ])("says so when %s, and keeps the state", async (_case, answer, message) => {
+    stubFetch(jsonResponse(200, USERS), answer);
+    const user = userEvent.setup();
+    renderAccounts();
+    await user.click(
+      await screen.findByRole("button", { name: "Desactivar operadora@example.com" }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+    expect(rows()[1][3]).toBe("Activa");
+  });
+
+  it("goes back to sign in when the session ended while changing a state", async () => {
+    const onSessionEnded = vi.fn();
+    stubFetch(jsonResponse(200, USERS), jsonResponse(401, apiError("NO_AUTENTICADO")));
+    const user = userEvent.setup();
+    renderAccounts(onSessionEnded);
+    await user.click(
+      await screen.findByRole("button", { name: "Desactivar operadora@example.com" }),
+    );
+    await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+});
