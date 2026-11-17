@@ -3,6 +3,7 @@ import type { PrismaClient } from "./generated/prisma/client.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
 import { requireAllowedOrigin } from "./middleware/origin.js";
 import { createSessionRouter } from "./modules/accounts/session.routes.js";
+import { createUsersRouter } from "./modules/accounts/users.routes.js";
 import { createHealthRouter } from "./modules/health/health.routes.js";
 import {
   createGracePeriodRouter,
@@ -31,6 +32,7 @@ export function createApp(prisma: PrismaClient, options: AppOptions): Express {
   app.use("/api/tarifas", createRatesRouter(prisma));
   app.use("/api/periodo-gracia", createGracePeriodRouter(prisma));
   app.use("/api/tope-periodo", createPeriodCapRouter(prisma));
+  app.use("/api/usuarios", createUsersRouter(prisma));
   app.use(notFound);
   app.use(errorHandler);
   return app;
