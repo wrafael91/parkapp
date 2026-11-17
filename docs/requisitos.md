@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49) |
-| Versión | 1.9 — 15 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106) |
+| Versión | 1.10 — 16 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -84,7 +84,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 | FR-01 | El sistema permite iniciar sesión con correo y contraseña. Una cuenta desactivada no puede iniciar sesión. | Ambos | Sección 1.3 |
 | FR-02 | El sistema permite cerrar sesión. | Ambos | NFR-04 |
 | FR-03 | El administrador crea cuentas de operador con una contraseña inicial, que el operador debe cambiar en su primer inicio de sesión. No existe registro público. | Administrador | Sección 1.3 |
-| FR-04 | El administrador desactiva y reactiva cuentas de operador. Las cuentas no se borran. | Administrador | Sección 1.3, BR-12 |
+| FR-04 | El administrador desactiva y reactiva cuentas de operador. Desactivar una cuenta cierra sus sesiones abiertas. Una cuenta de administrador no se desactiva desde la aplicación, y las cuentas no se borran. | Administrador | Sección 1.3, BR-12 |
 | FR-05 | El administrador restablece la contraseña de un operador. El operador debe cambiarla en su siguiente inicio de sesión, antes de usar cualquier otra función. | Administrador | Sección 1.3 |
 | FR-06 | Cada usuario puede cambiar su propia contraseña. | Ambos | Sección 1.3 |
 
@@ -237,7 +237,15 @@ persona opere con su propia identidad.
 
 - **Dado** un correo no registrado y una contraseña válida, **cuando** creo la cuenta, **entonces** el operador puede iniciar sesión, y el sistema le exige cambiar la contraseña antes de permitir cualquier otra acción.
 - **Dado** una contraseña de menos de 15 caracteres o que está en la lista de contraseñas filtradas, **cuando** creo la cuenta, **entonces** se rechaza (NFR-02).
+- **Dado** un correo ya registrado, aunque cambien las mayúsculas, **cuando** creo la cuenta, **entonces** se rechaza y no se crea nada (RI-15).
 - **Dado** que soy operador, **cuando** intento crear una cuenta, **entonces** la API responde 403.
+
+En el Sprint 3 (S3-07), la cuenta se crea con el cambio de contraseña pendiente
+(RI-16); exigirlo antes de cualquier otra acción llega con US-05, que trae la
+pantalla para cambiarla, y el rechazo de las contraseñas filtradas de NFR-02
+llega con el endurecimiento del inicio de sesión. Desde la aplicación solo se
+crean cuentas de operador: las de administrador las crea el script de arranque
+(decisión 3 de la sección 1.3).
 
 #### US-03 Desactivar y reactivar cuentas
 
@@ -247,6 +255,8 @@ cortar su acceso sin perder el rastro de sus registros.
 - **Dado** un operador con sesión abierta, **cuando** desactivo su cuenta, **entonces** su siguiente petición responde 401 (NFR-04).
 - **Dado** una cuenta desactivada, **cuando** se consultan sus registros, **entonces** la cuenta y sus registros se conservan.
 - **Dado** una cuenta desactivada, **cuando** la reactivo, **entonces** el operador puede volver a iniciar sesión.
+- **Dado** una cuenta reactivada, **cuando** se usa una sesión abierta antes de desactivarla, **entonces** la API responde 401: desactivar cerró esas sesiones.
+- **Dado** una cuenta de administrador, **cuando** intento desactivarla, **entonces** se rechaza, para que el único administrador no pueda bloquearse.
 
 #### US-04 Restablecer la contraseña de un operador
 
@@ -471,3 +481,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.7 | 14 de noviembre de 2026 | Origen y validación de los requisitos (sección 5.3), con el diagnóstico en `docs/diagnostico.md`. US-11 y US-12 se entregaron en el Sprint 2 (S2-25, #48). Se quita la referencia de OWASP repetida después del historial. S3-01 (#45) |
 | 1.8 | 15 de noviembre de 2026 | Tope por periodo (BR-18): FR-23 y US-16, fila nueva en la matriz de permisos y actor administrador con el tope. FR-13, US-08 y US-09 incluyen el tope. Cobertura con 18 reglas y 23 requisitos (decía 17 reglas, de BR-01 a BR-16). S3-04 (#14) |
 | 1.9 | 15 de noviembre de 2026 | El operador también consulta el historial: decisión 5 de la sección 1.3 (exportarlo sería solo del administrador; Ley 1581 de 2012), matriz de permisos, actor operador, FR-18 con el tipo de vehículo y US-13 para los dos actores, con los criterios de su primera parte (S3-06). FR-11 y US-07: búsqueda por la placa completa o por una parte de ella. S3-05 (#49) |
+| 1.10 | 16 de noviembre de 2026 | FR-04 y US-03: desactivar cierra las sesiones abiertas, y una cuenta de administrador no se desactiva desde la aplicación. US-02: correo repetido, y una nota sobre lo que llega con US-05 (cambio obligatorio, RI-16) y con el endurecimiento del inicio de sesión (contraseñas filtradas, NFR-02). S3-07 (#105) y S3-08 (#106) |

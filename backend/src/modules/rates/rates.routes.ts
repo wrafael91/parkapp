@@ -1,21 +1,16 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import type {
   LegalCap,
   PeriodCap,
-  Prisma,
   PrismaClient,
   Rate,
   VehicleType,
 } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
-import { recordAccessDenied } from "../accounts/access-denied.js";
-import { readSessionToken } from "../accounts/session-cookie.js";
-import { authenticate, type SessionUser } from "../accounts/session.service.js";
+import { authorizeAdministrator } from "../accounts/authorize.js";
 import { deactivatePeriodCap, setPeriodCap } from "./period-cap.js";
 import { setGracePeriod, setRate } from "./rate-settings.js";
-
-type Db = Prisma.TransactionClient;
 
 // The @map values of schema.prisma (ADR 0008, decision 4), in the order the
 // screen shows them.
@@ -43,30 +38,6 @@ const periodCapBody = z.union([
   z.object({ activo: z.literal(false) }),
   z.object({ horas: z.number(), valor: z.number().max(MAX_PERIOD_CAP_VALUE) }),
 ]);
-
-// Matrix 1.2: only an administrator configures the rate and the grace period.
-// Without a session, 401 before anything else; an operator gets 403, and the
-// rejection is logged (NFR-05). The body is validated after this.
-async function authorizeAdministrator(
-  db: Db,
-  req: Request,
-  now: Date,
-): Promise<{ kind: "unauthenticated" | "denied" } | { kind: "allowed"; user: SessionUser }> {
-  const token = readSessionToken(req.get("Cookie"));
-  const user = token === null ? null : await authenticate(db, { token, now });
-  if (user === null) return { kind: "unauthenticated" };
-  if (user.role !== "ADMINISTRATOR") {
-    await recordAccessDenied(db, {
-      userId: user.id,
-      ip: req.ip ?? "",
-      method: req.method,
-      url: req.originalUrl,
-      now,
-    });
-    return { kind: "denied" };
-  }
-  return { kind: "allowed", user };
-}
 
 function current(now: Date) {
   return { validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gt: now } }] };
