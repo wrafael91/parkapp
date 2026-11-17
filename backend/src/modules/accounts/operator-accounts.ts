@@ -62,3 +62,23 @@ export async function createOperator(
   });
   return { ok: true, userId: user.id };
 }
+
+interface SetAccountActiveInput {
+  userId: number;
+  active: boolean;
+  now: Date;
+  changedBy: ChangedBy;
+}
+
+export type SetAccountActiveResult =
+  { ok: true } | { ok: false; reason: "notFound" | "notOperator" | "alreadyInState" };
+
+// US-03, FR-04: an administrator deactivates or reactivates an operator
+// account. Accounts are never deleted, so every record keeps who made it
+// (BR-02, BR-12).
+export async function setAccountActive(
+  _db: Db,
+  _input: SetAccountActiveInput,
+): Promise<SetAccountActiveResult> {
+  throw new Error("Not implemented");
+}
