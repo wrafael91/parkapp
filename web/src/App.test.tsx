@@ -221,15 +221,26 @@ describe("sections (matrix 1.2)", () => {
     expect(screen.queryByRole("heading", { name: "Tarifa por minuto" })).toBeNull();
   });
 
-  it("shows an administrator Operación, Historial and Tarifas", async () => {
-    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS));
+  it("shows an administrator Operación, Historial, Tarifas and Cuentas", async () => {
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, { usuarios: [] }),
+    );
+    const user = userEvent.setup();
     render(<App />);
 
     const sections = await screen.findByRole("navigation", { name: "Secciones" });
     const names = within(sections)
       .getAllByRole("button")
       .map((button) => button.textContent);
-    expect(names).toEqual(["Operación", "Historial", "Tarifas"]);
+    expect(names).toEqual(["Operación", "Historial", "Tarifas", "Cuentas"]);
+    await screen.findByText("No hay vehículos dentro.");
+
+    await user.click(within(sections).getByRole("button", { name: "Cuentas" }));
+
+    await screen.findByRole("heading", { name: "Crear cuenta de operador" });
+    expect(screen.queryByRole("heading", { name: "Registrar ingreso" })).toBeNull();
   });
 
   // Requirements 1.3, decision 5: the operator also reads the history.

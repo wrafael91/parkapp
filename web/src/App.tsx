@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
+import Accounts from "./Accounts.tsx";
 import History from "./History.tsx";
 import Rates from "./Rates.tsx";
 import Stays from "./Stays.tsx";
@@ -127,7 +128,7 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   );
 }
 
-type Section = "operation" | "history" | "rates";
+type Section = "operation" | "history" | "rates" | "accounts";
 
 function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -149,8 +150,8 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
       <TopBar
         nav={
           // Matrix 1.2: both roles operate and read the history; only an
-          // administrator configures the rates. The API checks the role anyway
-          // (NFR-05).
+          // administrator configures the rates and manages the accounts. The API
+          // checks the role anyway (NFR-05).
           <nav className="topbar-nav" aria-label="Secciones">
             <SectionButton current={section} section="operation" onSelect={setSection}>
               Operación
@@ -159,9 +160,14 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
               Historial
             </SectionButton>
             {user.rol === "ADMINISTRADOR" && (
-              <SectionButton current={section} section="rates" onSelect={setSection}>
-                Tarifas
-              </SectionButton>
+              <>
+                <SectionButton current={section} section="rates" onSelect={setSection}>
+                  Tarifas
+                </SectionButton>
+                <SectionButton current={section} section="accounts" onSelect={setSection}>
+                  Cuentas
+                </SectionButton>
+              </>
             )}
           </nav>
         }
@@ -180,6 +186,7 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
         {section === "operation" && <Stays onSessionEnded={onSignedOut} />}
         {section === "history" && <History onSessionEnded={onSignedOut} />}
         {section === "rates" && <Rates onSessionEnded={onSignedOut} />}
+        {section === "accounts" && <Accounts onSessionEnded={onSignedOut} />}
       </main>
     </>
   );
