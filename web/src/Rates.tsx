@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { formatPesos, VEHICLE_TYPES } from "./stay.ts";
+import { formatPesos, groupDigits, VEHICLE_TYPES } from "./stay.ts";
 
-// GET and POST /api/tarifas, /api/periodo-gracia and /api/tope-periodo (ADR
-// 0008), with a relative URL and the default fetch, as in App.tsx: the browser
-// sends the session cookie by itself (docs/modelo-amenazas.md, 7.3).
+// GET and POST /api/tarifas, /api/periodo-gracia, /api/tope-periodo and
+// /api/cupos (ADR 0008), with a relative URL and the default fetch, as in
+// App.tsx: the browser sends the session cookie by itself
+// (docs/modelo-amenazas.md, 7.3).
 const RATES_URL = "/api/tarifas";
 const GRACE_PERIOD_URL = "/api/periodo-gracia";
 const PERIOD_CAP_URL = "/api/tope-periodo";
+const CAPACITY_URL = "/api/cupos";
 
 // A rate as the API answers it (ADR 0008).
 type Tarifa = {
@@ -19,7 +21,21 @@ type Tarifa = {
 // The cap per period as the API answers it, or null when it is off (BR-18).
 type TopePeriodo = { horas: number; valor: number; vigenteDesde: string };
 
-type Loaded = { tarifas: Tarifa[]; minutos: number | null; topePeriodo: TopePeriodo | null };
+// The spaces of a vehicle type as the API answers them (FR-24): null when the
+// type has no limit (BR-19).
+type Cupo = {
+  tipoVehiculo: "CARRO" | "MOTO";
+  cupos: number | null;
+  ocupados: number;
+  libres: number | null;
+};
+
+type Loaded = {
+  tarifas: Tarifa[];
+  minutos: number | null;
+  topePeriodo: TopePeriodo | null;
+  cupos: Cupo[];
+};
 
 type Settings = { status: "loading" } | { status: "failed" } | ({ status: "loaded" } & Loaded);
 
@@ -29,10 +45,14 @@ type Note = { kind: "error" | "saved"; text: string } | null;
 const SAVE_FAILED = "No se pudo guardar. Intenta de nuevo.";
 const ONLY_ADMINISTRATOR = "Solo un administrador puede cambiar las tarifas.";
 const CAP_OFF = "Tope desactivado: los vehículos que ingresen desde ahora se cobran sin tope.";
+const PLURAL_TYPES = { CARRO: "carros", MOTO: "motos" };
+const WITH_ARTICLE = { CARRO: "los carros", MOTO: "las motos" };
+const SPACES_NAMES = { CARRO: "Carros", MOTO: "Motos" };
 
-// The rate, the grace period and the cap per period (US-11, US-12, US-16; Image 4
-// of the article). The server checks the role, the legal cap (BR-10) and the
-// limits of the cap (RI-20); the page only shows them.
+// The rate, the grace period, the cap per period and the spaces (US-11, US-12,
+// US-16, US-17; Image 4 of the article). The server checks the role, the legal
+// cap (BR-10) and the limits of the cap and the spaces (RI-20, RI-21); the page
+// only shows them.
 // A 401 means the session ended, so the page goes back to sign in.
 export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }) {
   const [settings, setSettings] = useState<Settings>({ status: "loading" });
@@ -47,6 +67,9 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
   const [capValueDraft, setCapValueDraft] = useState("");
   const [capNote, setCapNote] = useState<Note>(null);
   const [savingCap, setSavingCap] = useState(false);
+  const [spacesDrafts, setSpacesDrafts] = useState<Record<string, string>>({});
+  const [spacesNote, setSpacesNote] = useState<Note>(null);
+  const [savingSpaces, setSavingSpaces] = useState(false);
 
   useEffect(() => {
     // Loads once, when the screen appears.
@@ -56,26 +79,34 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
       fetch(RATES_URL, { signal }),
       fetch(GRACE_PERIOD_URL, { signal }),
       fetch(PERIOD_CAP_URL, { signal }),
+      fetch(CAPACITY_URL, { signal }),
     ])
-      .then(async ([rates, grace, cap]) => {
-        if (rates.status === 401 || grace.status === 401 || cap.status === 401) {
+      .then(async (responses) => {
+        if (responses.some((response) => response.status === 401)) {
           onSessionEnded();
           return;
         }
-        if (!rates.ok || !grace.ok || !cap.ok) {
+        if (responses.some((response) => !response.ok)) {
           setSettings({ status: "failed" });
           return;
         }
+        const [rates, grace, cap, capacity] = responses;
         const { tarifas }: { tarifas: Tarifa[] } = await rates.json();
         const { minutos }: { minutos: number | null } = await grace.json();
         const { topePeriodo }: { topePeriodo: TopePeriodo | null } = await cap.json();
-        setSettings({ status: "loaded", tarifas, minutos, topePeriodo });
+        const { cupos }: { cupos: Cupo[] } = await capacity.json();
+        setSettings({ status: "loaded", tarifas, minutos, topePeriodo, cupos });
         setDrafts(
           Object.fromEntries(tarifas.map((rate) => [rate.tipoVehiculo, String(rate.valorMinuto)])),
         );
         setGraceDraft(minutos === null ? "" : String(minutos));
         setHoursDraft(topePeriodo === null ? "" : String(topePeriodo.horas));
         setCapValueDraft(topePeriodo === null ? "" : String(topePeriodo.valor));
+        setSpacesDrafts(
+          Object.fromEntries(
+            cupos.map((cupo) => [cupo.tipoVehiculo, cupo.cupos === null ? "" : String(cupo.cupos)]),
+          ),
+        );
       })
       .catch(() => {
         if (!signal.aborted) setSettings({ status: "failed" });
@@ -187,6 +218,60 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
       );
     }
     setCapNote({ kind: "error", text: capError(codigo) });
+  }
+
+  // Sets the spaces of a vehicle type, or removes its limit when the field is
+  // empty (BR-19). The server validates the value (RI-21).
+  async function saveSpaces(tipoVehiculo: Cupo["tipoVehiculo"]) {
+    const vehicles = PLURAL_TYPES[tipoVehiculo];
+    setSavingSpaces(true);
+    const response = await fetch(CAPACITY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipoVehiculo,
+        cupos: numberOrNull(spacesDrafts[tipoVehiculo] ?? ""),
+      }),
+    }).catch(() => null);
+    setSavingSpaces(false);
+    if (response?.ok) {
+      const saved: Cupo = await response.json();
+      replaceSpaces(saved);
+      setSpacesNote({
+        kind: "saved",
+        text:
+          saved.cupos === null
+            ? `Límite de ${vehicles} quitado: ${WITH_ARTICLE[tipoVehiculo]} entran sin límite de cupos.`
+            : `Cupos de ${vehicles} guardados: ${groupDigits(saved.cupos)}.`,
+      });
+      return;
+    }
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    const body = response === null ? null : await response.json().catch(() => null);
+    const codigo: string | undefined = body?.error?.codigo;
+    // Someone else removed the limit first: the card shows it without a limit.
+    if (codigo === "SIN_CUPOS_CONFIGURADOS") {
+      const current = settings.status === "loaded" ? settings.cupos : [];
+      const shown = current.find((cupo) => cupo.tipoVehiculo === tipoVehiculo);
+      if (shown) replaceSpaces({ ...shown, cupos: null, libres: null });
+    }
+    setSpacesNote({ kind: "error", text: spacesError(codigo, WITH_ARTICLE[tipoVehiculo]) });
+  }
+
+  function replaceSpaces(saved: Cupo) {
+    setSettings((current) =>
+      current.status === "loaded"
+        ? {
+            ...current,
+            cupos: current.cupos.map((each) =>
+              each.tipoVehiculo === saved.tipoVehiculo ? saved : each,
+            ),
+          }
+        : current,
+    );
   }
 
   if (settings.status === "loading") return <p className="muted">Cargando…</p>;
@@ -346,6 +431,70 @@ export default function Rates({ onSessionEnded }: { onSessionEnded: () => void }
         )}
         <NoteLine note={capNote} />
       </section>
+      <section className="card">
+        <h2>Cupos del parqueadero</h2>
+        <p className="muted">
+          Cuántos vehículos de cada tipo caben. Cuando no quedan cupos de un tipo, no se pueden
+          registrar más ingresos de ese tipo, y el otro sigue entrando. Deja el campo vacío para
+          quitar el límite; con 0, ese tipo de vehículo no puede entrar.
+        </p>
+        <div className="table-scroll">
+          <table className="rates-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Dentro</th>
+                <th>Cupos actuales</th>
+                <th>Nuevos cupos</th>
+                <th>
+                  <span className="visually-hidden">Guardar</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {settings.cupos.map((cupo) => {
+                const vehicles = PLURAL_TYPES[cupo.tipoVehiculo];
+                return (
+                  <tr key={cupo.tipoVehiculo}>
+                    <td>{SPACES_NAMES[cupo.tipoVehiculo]}</td>
+                    <td>{groupDigits(cupo.ocupados)}</td>
+                    <td>{cupo.cupos === null ? "Sin límite" : groupDigits(cupo.cupos)}</td>
+                    <td>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={10000}
+                        step={1}
+                        aria-label={`Nuevos cupos de ${vehicles}`}
+                        value={spacesDrafts[cupo.tipoVehiculo] ?? ""}
+                        onChange={(event) =>
+                          setSpacesDrafts({
+                            ...spacesDrafts,
+                            [cupo.tipoVehiculo]: event.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="column-save">
+                      <button
+                        type="button"
+                        className="button-primary"
+                        aria-label={`Guardar cupos de ${vehicles}`}
+                        disabled={savingSpaces}
+                        onClick={() => saveSpaces(cupo.tipoVehiculo)}
+                      >
+                        Guardar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <NoteLine note={spacesNote} />
+      </section>
     </div>
   );
 }
@@ -407,6 +556,21 @@ function capError(codigo: string | undefined): string {
       return "El tope ya estaba desactivado.";
     case "ACCESO_DENEGADO":
       return ONLY_ADMINISTRATOR;
+    default:
+      return SAVE_FAILED;
+  }
+}
+
+function spacesError(codigo: string | undefined, theVehicles: string): string {
+  switch (codigo) {
+    case "ENTRADA_INVALIDA":
+      return "Los cupos deben ser un número entero de 0 a 10.000. Deja el campo vacío para quitar el límite.";
+    case "SIN_CUPOS_CONFIGURADOS":
+      return `${theVehicles[0]!.toUpperCase()}${theVehicles.slice(1)} ya no tenían límite de cupos.`;
+    case "CUPOS_CAMBIARON":
+      return "Otro administrador cambió los cupos al mismo tiempo. Recarga la página, revisa los valores y vuelve a guardar.";
+    case "ACCESO_DENEGADO":
+      return "Solo un administrador puede cambiar los cupos.";
     default:
       return SAVE_FAILED;
   }
