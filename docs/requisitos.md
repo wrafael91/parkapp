@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106) |
-| Versión | 1.10 — 16 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110) |
+| Versión | 1.11 — 19 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -16,7 +16,7 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Actor | Descripción | Usa la aplicación |
 |---|---|---|
 | Operador | Registra ingresos y salidas, entrega el comprobante de pago y consulta el historial. | Sí |
-| Administrador | Configura la tarifa, el periodo de gracia y el tope por periodo, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
+| Administrador | Configura la tarifa, el periodo de gracia, el tope por periodo y los cupos, gestiona las cuentas de operador, anula y corrige registros y consulta el historial. También puede operar. | Sí |
 | Cliente | Propietario o conductor del vehículo. Recibe el comprobante. | No |
 | Mantenedor de la plataforma | Actualiza el tope legal y la condición de Sello Oro mediante migraciones versionadas en el repositorio (BR-15). | No |
 
@@ -29,11 +29,13 @@ Cada requisito se traza a las reglas BR-XX que lo originan.
 | Registrar salida y emitir comprobante | ✓ | ✓ | BR-04 a BR-08, BR-14 |
 | Buscar una estadía activa por placa | ✓ | ✓ | BR-13 |
 | Ver los vehículos que están dentro | ✓ | ✓ | — |
+| Ver el marcador de cupos | ✓ | ✓ | BR-19 |
 | Anular un registro o comprobante | ✗ | ✓ | BR-12 |
 | Corregir una estadía por reemplazo | No | Sí | BR-12, BR-16, BR-17 |
 | Configurar la tarifa por tipo de vehículo | ✗ | ✓ | BR-09, BR-10, BR-11 |
 | Configurar el periodo de gracia | ✗ | ✓ | BR-08, BR-11 |
 | Configurar el tope por periodo | ✗ | ✓ | BR-11, BR-18 |
+| Configurar los cupos por tipo de vehículo | ✗ | ✓ | BR-19 |
 | Crear y desactivar cuentas de operador | ✗ | ✓ | — |
 | Consultar el historial de estadías y comprobantes | ✓ | ✓ | BR-12, decisión 5 |
 | Consultar la bitácora de auditoría | ✗ | ✓ | BR-12 |
@@ -121,6 +123,7 @@ La columna Origen indica de dónde proviene cada requisito: una sección de este
 | FR-16 | El administrador configura la tarifa por minuto de cada tipo de vehículo, viendo el tope legal vigente. El sistema rechaza una tarifa mayor al tope, y cada cambio crea una versión nueva. | Administrador | BR-09, BR-10, BR-11, BR-15 |
 | FR-17 | El administrador configura el periodo de gracia en minutos. Cada cambio crea una versión nueva. | Administrador | BR-08, BR-11 |
 | FR-23 | El administrador activa, cambia o desactiva el tope por periodo: un periodo de 1 a 24 horas y un valor máximo por periodo, igual para carros y motos. Activarlo o cambiarlo crea una versión nueva; desactivarlo cierra la vigente sin crear otra. Los vehículos que ya están dentro conservan el tope con el que entraron. | Administrador | BR-11, BR-18 |
+| FR-24 | El administrador fija los cupos de cada tipo de vehículo (de 0 a 10.000) o quita su límite, y cada cambio crea una versión nueva. El operador y el administrador ven, por tipo, los cupos, los vehículos dentro y los cupos libres. Cuando no quedan cupos libres de un tipo, el sistema rechaza el ingreso de ese tipo y lo registra en la bitácora con los datos del vehículo. | Ambos (configurar: Administrador) | BR-19 |
 
 ### 2.6 Consultas y auditoría
 
@@ -217,6 +220,7 @@ Las Should son importantes pero no imprescindibles: si la capacidad del Sprint 3
 | US-14 | Consultar la bitácora de auditoría | FR-19 | Should | 3 |
 | US-15 | Ver el resumen de recaudo | FR-20 | Should | 3 |
 | US-16 | Configurar el tope por periodo | FR-23 | Must | 3 |
+| US-17 | Ver y configurar los cupos del parqueadero | FR-24 | Should | 3 |
 
 ### 4.2 Historias y criterios de aceptación
 
@@ -390,6 +394,21 @@ dejar de cobrar por minuto.
 - **Dado** un periodo de 0 o de 25 horas, o un valor de $0, **cuando** lo guardo, **entonces** se rechaza y no cambia nada.
 - **Dado** que soy operador, **cuando** intento consultar o cambiar el tope, **entonces** la API responde 403.
 
+#### US-17 Ver y configurar los cupos del parqueadero
+
+**Como** operador, **quiero** ver cuántos cupos quedan libres para carros y
+motos **para** no recibir más vehículos de los que caben. **Como**
+administrador, **quiero** fijar los cupos de cada tipo de vehículo **para**
+ampliarlos cuando se habiliten más espacios.
+
+- **Dado** que fijo 30 cupos de carros, **cuando** guardo, **entonces** se crea una versión vigente desde ese momento, y el cambio queda en la bitácora con mi usuario y mi IP.
+- **Dado** que hay 26 carros dentro y 30 cupos, **cuando** miro el marcador, **entonces** veo 4 libres, 26 ocupados y 30 cupos; las estadías cerradas y anuladas no cuentan.
+- **Dado** que no quedan cupos de carros, **cuando** registro el ingreso de un carro, **entonces** se rechaza con un aviso, el intento queda en la bitácora con los datos del vehículo, y las motos siguen entrando.
+- **Dado** que hay más carros dentro que cupos, **cuando** el administrador baja los cupos, **entonces** los carros dentro no se afectan y los nuevos se rechazan hasta que haya cupo.
+- **Dado** un tipo sin cupos configurados, **cuando** registro un ingreso, **entonces** entra sin límite, y el marcador muestra solo los ocupados.
+- **Dado** -1 o 10.001 cupos, **cuando** los guardo, **entonces** se rechazan y no cambia nada.
+- **Dado** que soy operador, **cuando** intento cambiar los cupos, **entonces** la API responde 403.
+
 ## 5. Matriz de trazabilidad
 
 ### 5.1 Objetivos específicos
@@ -397,7 +416,7 @@ dejar de cobrar por minuto.
 | Objetivo específico | Se cumple con | Requisitos relacionados |
 |---|---|---|
 | OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos y arquitectura (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
-| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-23; NFR-01 a NFR-08, NFR-20 |
+| OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-24; NFR-01 a NFR-08, NFR-20 |
 | OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 2) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
 | OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
 
@@ -428,9 +447,10 @@ dejar de cobrar por minuto.
 | FR-21 | BR-11, BR-12, BR-16, BR-17 | US-10 |
 | FR-22 | BR-12, BR-16, BR-17 | US-10 |
 | FR-23 | BR-11, BR-18 | US-16 |
+| FR-24 | BR-19 | US-17 |
 
-Cobertura: las 18 reglas de negocio (BR-01 a BR-18) aparecen en al menos un
-requisito funcional, y los 23 requisitos funcionales tienen al menos una
+Cobertura: las 19 reglas de negocio (BR-01 a BR-19) aparecen en al menos un
+requisito funcional, y los 24 requisitos funcionales tienen al menos una
 historia de usuario. En el Sprint 2 se agrega una columna con las pruebas que
 verifican cada requisito.
 
@@ -444,7 +464,7 @@ la Entrega 2 (`docs/diagnostico.md`, sección 6).
 | Origen | Requisitos y decisiones | Validación |
 |---|---|---|
 | Norma verificada | Cobro por minuto y sin permanencia mínima (BR-05), redondeo al múltiplo de $50 inferior (BR-07), tarifa con IVA por tipo de vehículo (BR-09), tope legal (BR-10, BR-15) y contenido del comprobante (BR-14) | Contrastados con el Decreto 652 de 2025 y el Decreto 026 de 2026 (`docs/reglas-de-negocio.md`, sección 3) |
-| Observado en el diagnóstico | Verificación de la placa a la salida (BR-04, parqueadero A), tiquete perdido sin recargo (BR-13, B), comprobante con las dos horas (BR-14, A y B), tope por periodo (BR-18 y FR-23; B, C y D) y operación sin conexión (#54, D) | Se confirman en la visita |
+| Observado en el diagnóstico | Verificación de la placa a la salida (BR-04, parqueadero A), tiquete perdido sin recargo (BR-13, B), comprobante con las dos horas (BR-14, A y B), tope por periodo (BR-18 y FR-23; B, C y D), capacidad por tipo de vehículo (BR-19 y FR-24; A y B) y operación sin conexión (#54, D) | Se confirman en la visita |
 | Revisado con la asesora | Alcance de la Entrega 2 y flujo mínimo que debe funcionar para la Semana TIC: iniciar sesión, registrar un ingreso, ver los vehículos dentro, registrar la salida, cobrar y emitir el comprobante | Reunión del 7 de noviembre de 2026; flujo en producción desde el 11 de noviembre (S2-12) |
 | Propuesta del estudiante | Solo minutos completos (BR-06), alerta de posible placa clonada (BR-03), periodo de gracia (BR-08), versiones de tarifa y gracia (BR-11), anulación sin borrado (BR-12), horas asignadas por el servidor (BR-16) y corrección por reemplazo (BR-17) | Pendientes de validar en la visita |
 
@@ -482,3 +502,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.8 | 15 de noviembre de 2026 | Tope por periodo (BR-18): FR-23 y US-16, fila nueva en la matriz de permisos y actor administrador con el tope. FR-13, US-08 y US-09 incluyen el tope. Cobertura con 18 reglas y 23 requisitos (decía 17 reglas, de BR-01 a BR-16). S3-04 (#14) |
 | 1.9 | 15 de noviembre de 2026 | El operador también consulta el historial: decisión 5 de la sección 1.3 (exportarlo sería solo del administrador; Ley 1581 de 2012), matriz de permisos, actor operador, FR-18 con el tipo de vehículo y US-13 para los dos actores, con los criterios de su primera parte (S3-06). FR-11 y US-07: búsqueda por la placa completa o por una parte de ella. S3-05 (#49) |
 | 1.10 | 16 de noviembre de 2026 | FR-04 y US-03: desactivar cierra las sesiones abiertas, y una cuenta de administrador no se desactiva desde la aplicación. US-02: correo repetido, y una nota sobre lo que llega con US-05 (cambio obligatorio, RI-16) y con el endurecimiento del inicio de sesión (contraseñas filtradas, NFR-02). S3-07 (#105) y S3-08 (#106) |
+| 1.11 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): FR-24 y US-17 (Should), dos filas nuevas en la matriz de permisos y actor administrador con los cupos. Cobertura con 19 reglas y 24 requisitos; origen de BR-19 en la sección 5.3. S3-09 (#110) |
