@@ -142,3 +142,26 @@
 .topbar-nav button:focus-visible {
   outline-color: #ffffff;
 }
+
+/* On a narrow phone the four sections of the administrator fit in one line:
+   less space around each one, and if a screen is narrower still, the last ones
+   go to a second line instead of out of the bar. */
+.topbar-nav {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 24rem) {
+  .topbar {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .topbar-nav {
+    gap: 0;
+  }
+
+  .topbar-nav button {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+}
