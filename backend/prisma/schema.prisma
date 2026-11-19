@@ -1,5 +1,5 @@
 // ParkApp — modelo físico de datos.
-// Diseño lógico y reglas de integridad (RI-01 a RI-20): docs/modelo-datos.md
+// Diseño lógico y reglas de integridad (RI-01 a RI-21): docs/modelo-datos.md
 
 generator client {
   provider = "prisma-client"
@@ -44,6 +44,8 @@ enum AuditAction {
   RATE_CHANGED                @map("TARIFA_CAMBIADA")
   GRACE_PERIOD_CHANGED        @map("PERIODO_GRACIA_CAMBIADO")
   PERIOD_CAP_CHANGED          @map("TOPE_PERIODO_CAMBIADO")
+  CAPACITY_CHANGED            @map("CUPO_CAMBIADO")
+  ENTRY_REJECTED_NO_CAPACITY  @map("INGRESO_RECHAZADO_SIN_CUPO")
   ACCOUNT_CREATED             @map("CUENTA_CREADA")
   ACCOUNT_DEACTIVATED         @map("CUENTA_DESACTIVADA")
   ACCOUNT_REACTIVATED         @map("CUENTA_REACTIVADA")
@@ -68,6 +70,7 @@ model User {
   ratesCreated        Rate[]
   gracePeriodsCreated GracePeriod[]
   periodCapsCreated   PeriodCap[]
+  capacitiesCreated   Capacity[]
   staysEntered        Stay[]        @relation("StayEntryBy")
   staysExited         Stay[]        @relation("StayExitBy")
   staysVoided         Stay[]        @relation("StayVoidedBy")
@@ -152,6 +155,22 @@ model PeriodCap {
 
   @@index([createdById])
   @@map("tope_periodo")
+}
+
+// BR-19: the spaces of a vehicle type. No current version means no limit, and the
+// free spaces are calculated from the active stays, not stored.
+model Capacity {
+  id          Int         @id @default(autoincrement())
+  vehicleType VehicleType @map("tipo_vehiculo")
+  spaces      Int         @map("cupos")
+  validFrom   DateTime    @default(now()) @map("vigente_desde") @db.Timestamptz(3)
+  validTo     DateTime?   @map("vigente_hasta") @db.Timestamptz(3)
+  createdById Int         @map("creado_por_id")
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
+  @@map("cupo")
 }
 
 model Stay {
