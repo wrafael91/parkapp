@@ -6,9 +6,11 @@ import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { hashSessionToken } from "../accounts/session-token.js";
+import { setCapacity } from "../capacity/capacity.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { registerEntry } from "./entry.service.js";
 import { registerExit } from "./exit.service.js";
+import { closeCurrentVersions } from "../../versions.test-helper.js";
 
 const prisma = createPrismaClient(config.databaseUrl);
 
@@ -28,12 +30,15 @@ const TOKEN = "token-de-prueba-de-las-rutas-de-estadias-0001";
 
 // Like the session routes, each test runs as parkapp_app and always rolls back.
 // The route's transaction is a savepoint inside the test transaction, so a
-// route that throws loses its writes, as it would in production.
+// route that throws loses its writes, as it would in production. The current
+// versions are closed first, so the spaces of a development database (BR-19) do
+// not reject the entries of these tests.
 async function withApp(test: (app: Express, db: Prisma.TransactionClient) => Promise<void>) {
   try {
     await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+        await closeCurrentVersions(tx);
         const prismaInTest = {
           $transaction: async (run: (db: Prisma.TransactionClient) => Promise<unknown>) => {
             await tx.$executeRawUnsafe("SAVEPOINT route");
@@ -255,6 +260,47 @@ describe("POST /api/estadias with a plate that is already inside (BR-03, FR-09)"
       });
       expect(event).toMatchObject({ entityId: first.body.id, ip: IP });
       expect(event.detail).toEqual({ tipo_vehiculo: "CARRO", color: "Azul", marca: "Mazda" });
+    });
+  });
+});
+
+describe("POST /api/estadias when its vehicle type has no spaces left (BR-19)", () => {
+  it("answers 409 SIN_CUPO, keeps the audit event and lets motorcycles in", async () => {
+    await withApp(async (app, db) => {
+      const { user, cookie } = await signedInOperator(db);
+      const carsInside = await db.stay.count({ where: { vehicleType: "CAR", status: "ACTIVE" } });
+      const spaces = await setCapacity(db, {
+        vehicleType: "CAR",
+        spaces: carsInside,
+        now: new Date(Date.now() - 60_000),
+        changedBy: { userId: user.id, ip: IP },
+      });
+
+      const response = await postEntry(app, CAR, cookie);
+      const motorcycle = await postEntry(
+        app,
+        { placa: "TST12A", tipoVehiculo: "MOTO", color: "Negro" },
+        cookie,
+      );
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: { codigo: "SIN_CUPO", mensaje: "No quedan cupos para ese tipo de vehículo." },
+      });
+      expect(await db.stay.count({ where: { plate: "TST123" } })).toBe(0);
+      // The rejection is committed, not rolled back: the event stays in the log.
+      const event = await db.auditEvent.findFirstOrThrow({
+        where: { action: "ENTRY_REJECTED_NO_CAPACITY", userId: user.id },
+      });
+      if (!spaces.ok) throw new Error("spaces not set");
+      expect(event).toMatchObject({ entity: "cupo", entityId: spaces.capacityId, ip: IP });
+      expect(event.detail).toEqual({
+        placa: "TST123",
+        color: "Rojo",
+        marca: "Mazda",
+        dentro: carsInside,
+      });
+      expect(motorcycle.status).toBe(201);
     });
   });
 });

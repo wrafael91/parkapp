@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14) |
-| Versión | 1.5 — 15 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110) |
+| Versión | 1.6 — 19 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -23,6 +23,7 @@ claves y restricciones) y físico (esquema de Prisma sobre PostgreSQL).
 | Tarifa | Valor por minuto que cobra el parqueadero, por tipo de vehículo. Cada cambio crea una versión nueva. | BR-09, BR-10, BR-11, FR-16 |
 | Periodo de gracia | Minutos iniciales sin cobro. Cada cambio crea una versión nueva. | BR-08, BR-11, FR-17 |
 | Tope por periodo | Valor máximo que se cobra por cada periodo de horas de una estadía, igual para carros y motos. Puede estar desactivado. Cada cambio crea una versión nueva. | BR-11, BR-18, FR-23 |
+| Cupos | Número de vehículos de un tipo que caben en el parqueadero. Puede no estar configurado (sin límite). Cada cambio crea una versión nueva. Los cupos libres no se guardan: se calculan con las estadías activas. | BR-19 |
 | Estadía | Paso de un vehículo por el parqueadero: datos del vehículo observados al ingreso, ingreso, salida y, si aplica, anulación. | BR-01 a BR-04, BR-11 a BR-13, BR-16, BR-17; FR-07 a FR-12, FR-15, FR-21, FR-22 |
 | Comprobante | Constancia del cobro de una estadía cerrada, con los valores aplicados. | BR-05 a BR-07, BR-14, BR-18; FR-13, FR-14 |
 | Evento de auditoría | Registro inmutable de una acción: quién, qué, cuándo y desde qué IP. | FR-19, NFR-03, NFR-05, NFR-12 |
@@ -41,6 +42,7 @@ erDiagram
     USUARIO ||--o{ TARIFA : "crea"
     USUARIO ||--o{ PERIODO_GRACIA : "crea"
     USUARIO ||--o{ TOPE_PERIODO : "crea"
+    USUARIO ||--o{ CUPO : "crea"
     USUARIO |o--o{ EVENTO_AUDITORIA : "origina"
     TOPE_LEGAL ||--o{ TARIFA : "limita"
     TARIFA ||--o{ ESTADIA : "se aplica a"
@@ -150,6 +152,14 @@ erDiagram
         timestamptz vigente_hasta "nulo si está vigente"
         int creado_por_id FK
     }
+    CUPO {
+        int id PK
+        tipo_vehiculo tipo_vehiculo
+        int cupos "de 0 a 10.000"
+        timestamptz vigente_desde
+        timestamptz vigente_hasta "nulo si está vigente"
+        int creado_por_id FK
+    }
     ESTADIA {
         int id PK
         text placa "normalizada"
@@ -196,6 +206,7 @@ erDiagram
     USUARIO ||--o{ TARIFA : "crea"
     USUARIO ||--o{ PERIODO_GRACIA : "crea"
     USUARIO ||--o{ TOPE_PERIODO : "crea"
+    USUARIO ||--o{ CUPO : "crea"
     USUARIO |o--o{ EVENTO_AUDITORIA : "origina"
     TOPE_LEGAL ||--o{ TARIFA : "limita"
     TARIFA ||--o{ ESTADIA : "se aplica a"
@@ -218,8 +229,8 @@ Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
 | RI-04 | Las únicas transiciones de estado válidas son de activa a cerrada, de activa a anulada y de cerrada a anulada. Una estadía anulada no cambia: si sus datos estaban equivocados, se corrige con una estadía de reemplazo (RI-19).| BR-12 |
 | RI-05 | La hora de salida no es anterior a la de ingreso. | BR-16 |
 | RI-06 | La tarifa de la estadía corresponde a su tipo de vehículo. La tarifa, el periodo de gracia y el tope por periodo son los vigentes al momento del ingreso; si no había tope vigente, la estadía no tiene tope. | BR-11, BR-18 |
-| RI-07 | Hay como máximo una versión vigente de tarifa y de tope legal por tipo de vehículo, una de periodo de gracia y una de tope por periodo. En toda versión, `vigente_hasta` es posterior a `vigente_desde`. | BR-11, BR-15, BR-18 |
-| RI-08 | Las versiones de tope legal, tarifa, periodo de gracia y tope por periodo no se modifican; solo se cierran, una sola vez. | BR-11, BR-15, BR-18 |
+| RI-07 | Hay como máximo una versión vigente de tarifa, de tope legal y de cupos por tipo de vehículo, una de periodo de gracia y una de tope por periodo. En toda versión, `vigente_hasta` es posterior a `vigente_desde`. | BR-11, BR-15, BR-18, BR-19 |
+| RI-08 | Las versiones de tope legal, tarifa, periodo de gracia, tope por periodo y cupos no se modifican; solo se cierran, una sola vez. | BR-11, BR-15, BR-18, BR-19 |
 | RI-09 | La tarifa vigente es mayor que cero y no supera el tope legal vigente de su tipo de vehículo. Se verifica al crear una tarifa y al cambiar un tope. | BR-10, BR-15 |
 | RI-10 | El periodo de gracia es un número entero de minutos mayor o igual a cero. | BR-08, US-12 |
 | RI-11 | Toda estadía con salida registrada tiene exactamente un comprobante, y solo esas estadías lo tienen. La salida y el comprobante se registran en la misma transacción. | FR-13, FR-14 |
@@ -232,6 +243,7 @@ Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
 | RI-18 | En la bitácora, la IP solo puede ser nula si el evento no tiene usuario, como en la creación del primer administrador con el script de despliegue. | NFR-12; catálogo de la sección 4.1 |
 | RI-19 | Una estadía de reemplazo apunta a una estadía anulada distinta de sí misma, cada estadía anulada tiene como máximo un reemplazo, y el reemplazo conserva la hora de ingreso de la anulada. | BR-16, BR-17 |
 | RI-20 | El tope por periodo dura un número entero de horas, de 1 a 24, y su valor es un número entero de pesos mayor que cero. | BR-18 |
+| RI-21 | Los cupos de un tipo de vehículo son un número entero de 0 a 10.000. | BR-19 |
 
 ### 2.4 Decisiones del modelo lógico
 
@@ -265,6 +277,16 @@ Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
    no había tope, y la estadía se cobra por minuto aunque después se active uno
    (BR-11). El tope es general y no por tipo de vehículo (BR-18), así que no
    tiene `tipo_vehiculo`.
+8. **Los cupos libres no se guardan.** Se calculan en cada ingreso como los
+   cupos vigentes del tipo menos sus estadías activas, así que no hay un
+   contador que pueda desviarse de los registros (BR-19). Quitar el límite de un
+   tipo cierra su versión vigente sin crear otra, como al desactivar el tope. La
+   estadía no guarda los cupos con los que entró: a diferencia de la tarifa, no
+   cambian su cobro. Para que dos ingresos del mismo tipo no tomen el último
+   cupo a la vez, cada ingreso y cada cambio de cupos toma un candado de
+   PostgreSQL por tipo de vehículo (`pg_advisory_xact_lock`) hasta el final de
+   su transacción; las salidas y anulaciones no lo toman, porque solo liberan
+   cupos.
 
 ## 3. Modelo físico
 
@@ -303,7 +325,8 @@ Tres migraciones de S3-03 (#6) agregan las restricciones CHECK y los índices
 `add_receipt_audit_email_constraints`, del 14 de noviembre de 2026. La migración
 `add_period_cap` de S3-04 (#14) crea la tabla `tope_periodo` con sus restricciones
 (RI-07, RI-20) y rehace `comprobante_valores_validos` con el descuento por tope
-(RI-12). Las reglas que necesitan triggers llegan en la segunda parte de S3-03. Cada restricción tiene una prueba
+(RI-12). La migración `add_capacity` de S3-09 (#110) crea la tabla `cupo` con
+sus restricciones (RI-07, RI-21) sin cambiar las tablas existentes. Las reglas que necesitan triggers llegan en la segunda parte de S3-03. Cada restricción tiene una prueba
 en `backend/src/integrity.test.ts` que la viola y espera el error con su nombre,
 como `parkapp_app` (o como dueño de la tabla en el tope legal, que la aplicación
 no puede escribir).
@@ -316,8 +339,8 @@ no puede escribir).
 | RI-04 | Trigger de transiciones de estado | Pendiente (S3-03, segunda parte) |
 | RI-05 | CHECK `estadia_salida_posterior_ingreso` | Implementada (S3-03) |
 | RI-06 | Trigger que compara la tarifa, la gracia y el tope por periodo con la estadía | Pendiente (S3-03, segunda parte) |
-| RI-07 | CHECK `tope_legal_vigencia_valida`, `tarifa_vigencia_valida`, `periodo_gracia_vigencia_valida` y `tope_periodo_vigencia_valida`; índices únicos parciales `tope_legal_vigente_unico`, `tarifa_vigente_unica`, `periodo_gracia_vigente_unico` y `tope_periodo_vigente_unico` | Implementada (S3-03 y S3-04) |
-| RI-08 | `parkapp_app` solo puede actualizar `vigente_hasta` (S2-19; en `tope_periodo`, S3-04); que se cierre una sola vez necesita un trigger | En parte |
+| RI-07 | CHECK `tope_legal_vigencia_valida`, `tarifa_vigencia_valida`, `periodo_gracia_vigencia_valida`, `tope_periodo_vigencia_valida` y `cupo_vigencia_valida`; índices únicos parciales `tope_legal_vigente_unico`, `tarifa_vigente_unica`, `periodo_gracia_vigente_unico`, `tope_periodo_vigente_unico` y `cupo_vigente_unico` | Implementada (S3-03, S3-04 y S3-09) |
+| RI-08 | `parkapp_app` solo puede actualizar `vigente_hasta` (S2-19; en `tope_periodo`, S3-04; en `cupo`, S3-09); que se cierre una sola vez necesita un trigger | En parte |
 | RI-09 | CHECK `tope_legal_valor_positivo` y `tarifa_valor_positivo`; que la tarifa no supere el tope necesita un trigger (hoy lo verifica la API) | En parte |
 | RI-10 | CHECK `periodo_gracia_minutos_no_negativos` (la columna es entera) | Implementada (S3-03) |
 | RI-11 | Índice único `comprobante_estadia_id_key` (S1-04): como máximo un comprobante por estadía; que toda estadía cerrada tenga uno necesita un trigger | En parte |
@@ -330,6 +353,7 @@ no puede escribir).
 | RI-18 | CHECK `evento_auditoria_ip_con_usuario` | Implementada (S3-03) |
 | RI-19 | CHECK `estadia_reemplazo_distinto` e índice único `estadia_reemplaza_a_id_key` (S1-04); que el reemplazo apunte a una estadía anulada y conserve su hora de ingreso necesita un trigger | En parte |
 | RI-20 | CHECK `tope_periodo_horas_validas` y `tope_periodo_valor_positivo` (las columnas son enteras) | Implementada (S3-04) |
+| RI-21 | CHECK `cupo_cupos_validos` (la columna es entera) | Implementada (S3-09) |
 
 Prisma no puede declarar estas restricciones en `schema.prisma`, así que no las
 conoce. Una migración generada con `prisma migrate dev` podría intentar borrar
@@ -360,12 +384,14 @@ fallido, porque un usuario puede escribir por error su contraseña en ese campo
 | ACCESO_DENEGADO | ACCESS_DENIED | Petición rechazada con 403 por no tener el rol requerido. | NFR-05 | ninguna | `metodo` y `ruta`, sin parámetros de consulta | Operador o administrador |
 | INGRESO_REGISTRADO | ENTRY_REGISTERED | Ingreso de un vehículo. | FR-07, FR-19 | estadia | — | Operador o administrador |
 | INGRESO_RECHAZADO_PLACA_ACTIVA | ENTRY_REJECTED_ACTIVE_PLATE | Ingreso rechazado porque la placa ya tiene una estadía activa (posible placa clonada). | BR-03, FR-09, FR-19 | estadia (la activa) | `tipo_vehiculo`, `color` y `marca` del vehículo rechazado | Operador o administrador |
+| INGRESO_RECHAZADO_SIN_CUPO | ENTRY_REJECTED_NO_CAPACITY | Ingreso rechazado porque no quedan cupos de su tipo de vehículo. | BR-19, FR-19 | cupo (la versión vigente, con el tipo y los cupos) | `placa`, `color` y `marca` del vehículo rechazado, y `dentro`: los vehículos de ese tipo que había dentro | Operador o administrador |
 | SALIDA_REGISTRADA | EXIT_REGISTERED | Salida de un vehículo y emisión de su comprobante, en la misma transacción (RI-11). | FR-12, FR-13, FR-14, FR-19 | estadia | — | Operador o administrador |
 | ESTADIA_ANULADA | STAY_VOIDED | Anulación de una estadía y, si lo tiene, de su comprobante. | BR-12, FR-15, FR-19 | estadia | — (el motivo queda en la estadía) | Administrador |
 | `ESTADIA_CORREGIDA` | `STAY_CORRECTED` | Corrección por reemplazo: anulación de la estadía equivocada y creación de su reemplazo, en la misma transacción. | BR-17, FR-19, FR-21, FR-22 | estadia (el reemplazo) | en una corrección de salida, el id de la estadía que se cerró con la hora de esa salida | Administrador |
 | TARIFA_CAMBIADA | RATE_CHANGED | Creación de una nueva versión de tarifa. | FR-16, FR-19 | tarifa (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
 | PERIODO_GRACIA_CAMBIADO | GRACE_PERIOD_CHANGED | Creación de una nueva versión del periodo de gracia. | FR-17, FR-19 | periodo_gracia (la nueva versión) | — | Administrador, o el sistema (script de arranque) |
 | TOPE_PERIODO_CAMBIADO | PERIOD_CAP_CHANGED | Activación o cambio del tope por periodo (nueva versión), o su desactivación (cierre de la versión vigente sin crear otra). | BR-18, FR-19, FR-23 | tope_periodo (la nueva versión; en una desactivación, la versión cerrada, cuyo `vigente_hasta` es la hora del evento) | — | Administrador |
+| CUPO_CAMBIADO | CAPACITY_CHANGED | Cambio de los cupos de un tipo de vehículo (nueva versión), o el límite quitado (cierre de la versión vigente sin crear otra). | BR-19, FR-19 | cupo (la nueva versión; si se quitó el límite, la versión cerrada) | — | Administrador |
 | CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
 | CUENTA_DESACTIVADA | ACCOUNT_DEACTIVATED | Desactivación de una cuenta; revoca sus sesiones. | FR-04, FR-19, NFR-04 | usuario | — | Administrador |
 | CUENTA_REACTIVADA | ACCOUNT_REACTIVATED | Reactivación de una cuenta. | FR-04, FR-19 | usuario | — | Administrador |
@@ -467,6 +493,17 @@ su regla RI.
 | vigente_hasta | `validTo` | TIMESTAMPTZ(3) | No | — | — | Fin de la vigencia; nulo si está vigente (RI-07). Sin versión vigente, el tope está desactivado (sección 2.4, decisión 7). |
 | creado_por_id | `createdById` | INTEGER | Sí | — | FK → usuario | Administrador que creó la versión. |
 
+#### cupo (`Capacity`)
+
+| Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
+|---|---|---|---|---|---|---|
+| id | `id` | INTEGER | Sí | autoincremental | PK | Identificador de la versión. |
+| tipo_vehiculo | `vehicleType` | tipo_vehiculo | Sí | — | — | Tipo de vehículo de los cupos. |
+| cupos | `spaces` | INTEGER | Sí | — | — | Vehículos de ese tipo que caben, de 0 a 10.000; 0 si el parqueadero no recibe ese tipo (BR-19, RI-21). |
+| vigente_desde | `validFrom` | TIMESTAMPTZ(3) | Sí | CURRENT_TIMESTAMP | — | Inicio de la vigencia. |
+| vigente_hasta | `validTo` | TIMESTAMPTZ(3) | No | — | — | Fin de la vigencia; nulo si está vigente (RI-07). Sin versión vigente, el tipo no tiene límite (sección 2.4, decisión 8). |
+| creado_por_id | `createdById` | INTEGER | Sí | — | FK → usuario | Administrador que creó la versión. |
+
 #### estadia (`Stay`)
 
 | Columna | Código | Tipo | Obligatoria | Por defecto | Clave | Descripción |
@@ -526,7 +563,7 @@ su regla RI.
 | estado_estadia | ACTIVA | `ACTIVE` |
 | estado_estadia | CERRADA | `CLOSED` |
 | estado_estadia | ANULADA | `VOIDED` |
-| accion_auditoria | 16 valores | Ver la sección 4.1 |
+| accion_auditoria | 18 valores | Ver la sección 4.1 |
 
 ### 4.4 Índices
 
@@ -537,7 +574,7 @@ su regla RI.
 | sesion | usuario_id | Revocar las sesiones de un usuario (NFR-04). |
 | comprobante | consecutivo (único); estadia_id (único) | Numeración y un comprobante por estadía (RI-11). |
 | estadia | reemplaza_a_id (único) | Un reemplazo como máximo por cada estadía anulada (RI-19). |
-| tarifa, periodo_gracia, tope_periodo y estadia | Cada clave foránea | Consultas por usuario, tarifa y periodo de gracia, como el filtro por operador del historial (FR-18) y el resumen de recaudo (FR-20). |
+| tarifa, periodo_gracia, tope_periodo, cupo y estadia | Cada clave foránea | Consultas por usuario, tarifa y periodo de gracia, como el filtro por operador del historial (FR-18) y el resumen de recaudo (FR-20). |
 | evento_auditoria | usuario_id | Consultar los eventos de un usuario (FR-19). |
 | evento_auditoria | (accion, entidad, entidad_id, ocurrido_en) | Contar los intentos fallidos de una cuenta en los últimos 15 minutos (NFR-03). |
 | usuario | lower(correo) (único) | Correo único sin distinguir mayúsculas de minúsculas (RI-15). S3-03 |
@@ -545,6 +582,12 @@ su regla RI.
 | tope_legal y tarifa | tipo_vehiculo (único, solo versiones vigentes) | Una versión vigente por tipo de vehículo (RI-07). S3-03 |
 | periodo_gracia | (vigente_hasta IS NULL) (único, solo la versión vigente) | Una sola versión vigente (RI-07). S3-03 |
 | tope_periodo | (vigente_hasta IS NULL) (único, solo la versión vigente) | Un solo tope vigente (RI-07). S3-04 |
+| cupo | tipo_vehiculo (único, solo versiones vigentes) | Una versión vigente de cupos por tipo de vehículo (RI-07). S3-09 |
+
+Contar los vehículos de un tipo que están dentro (BR-19) usa el índice de RI-02
+(`estadia_placa_activa_unica`, que solo tiene las estadías activas): con 100.000
+estadías en el historial y 280 motos dentro, el conteo tomó 0,07 ms en la
+simulación del 17 de noviembre de 2026, así que no se agregó un índice.
 
 Los índices para los demás filtros del historial (fechas y placa, FR-18) se
 definen en el Sprint 3 con las pruebas de carga de NFR-14, para decidirlos con
@@ -560,3 +603,4 @@ mediciones y no por suposición.
 | 1.3 | 14 de noviembre de 2026 | Sección 3.2: restricciones CHECK e índices únicos parciales en la base (RI-01, RI-02, RI-03, RI-05, RI-07, RI-09 en parte, RI-10, RI-12, RI-15, RI-17, RI-18 y RI-19 en parte), con el estado de cada regla; índices nuevos en la sección 4.4. S3-03 (#6) |
 | 1.4 | 14 de noviembre de 2026 | Tope por periodo (BR-18): entidad y tabla `tope_periodo`, `estadia.tope_periodo_id`, `comprobante.descuento_tope`, acción `TOPE_PERIODO_CAMBIADO` (16 acciones) y decisión 7 de la sección 2.4. RI-06, RI-07, RI-08 y RI-12 incluyen el tope, y RI-20 es nueva. Sección 3.2 con la migración `add_period_cap` e índice nuevo en la sección 4.4. S3-04 (#14) |
 | 1.5 | 15 de noviembre de 2026 | La entidad Tope por periodo (1.1) y la acción `TOPE_PERIODO_CAMBIADO` (4.1) citan FR-23, el requisito de configurar el tope (`docs/requisitos.md` 1.8). S3-04 (#14) |
+| 1.6 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): entidad y tabla `cupo`, acciones `CUPO_CAMBIADO` e `INGRESO_RECHAZADO_SIN_CUPO` (18 acciones) y decisión 8 de la sección 2.4. RI-07 y RI-08 incluyen los cupos, y RI-21 es nueva. Sección 3.2 con la migración `add_capacity` e índice nuevo en la sección 4.4. S3-09 (#110) |

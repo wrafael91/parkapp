@@ -1,5 +1,6 @@
 import { normalizePlate } from "../../domain/plate.js";
 import type { Prisma, VehicleType } from "../../generated/prisma/client.js";
+import { lockVehicleType } from "../capacity/capacity.js";
 
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
@@ -15,7 +16,8 @@ interface RegisterEntryInput {
 }
 
 export type RegisterEntryResult =
-  { ok: true; stayId: number } | { ok: false; reason: "invalidPlate" | "plateActive" };
+  | { ok: true; stayId: number }
+  | { ok: false; reason: "invalidPlate" | "plateActive" | "noCapacity" };
 
 // The values stored in the database (schema.prisma), for the audit log.
 const VEHICLE_TYPE_VALUES: Record<VehicleType, string> = { CAR: "CARRO", MOTORCYCLE: "MOTO" };
@@ -31,6 +33,11 @@ export async function registerEntry(
   }
   const color = input.color.trim();
   const brand = input.brand?.trim() || null;
+  // BR-19: entries of the same vehicle type run one at a time from here until the
+  // transaction ends, so the count below cannot miss a vehicle that another entry is
+  // registering. Taking the lock before BR-03 also turns two simultaneous entries
+  // of the same plate into one entry and one cloned-plate rejection.
+  await lockVehicleType(db, input.vehicleType);
   // BR-03: a plate that is already inside may be a cloned plate. The attempt is
   // recorded with the rejected vehicle, which no stay keeps (FR-09).
   const active = await db.stay.findFirst({ where: { plate, status: "ACTIVE" } });
@@ -47,6 +54,31 @@ export async function registerEntry(
       },
     });
     return { ok: false, reason: "plateActive" };
+  }
+  // BR-19: free spaces are the current spaces of the type minus its active stays;
+  // closed and voided stays do not count. A type without spaces has no limit. The
+  // rejection is recorded with the rejected vehicle, which no stay keeps.
+  const capacity = await db.capacity.findFirst({
+    where: { vehicleType: input.vehicleType, validTo: null },
+  });
+  if (capacity !== null) {
+    const inside = await db.stay.count({
+      where: { vehicleType: input.vehicleType, status: "ACTIVE" },
+    });
+    if (inside >= capacity.spaces) {
+      await db.auditEvent.create({
+        data: {
+          action: "ENTRY_REJECTED_NO_CAPACITY",
+          userId: input.userId,
+          entity: "cupo",
+          entityId: capacity.id,
+          detail: { placa: plate, color, marca: brand, dentro: inside },
+          ip: input.ip,
+          occurredAt: input.now,
+        },
+      });
+      return { ok: false, reason: "noCapacity" };
+    }
   }
   // BR-11 and RI-06: the stay keeps the rate, the grace period and the cap in force now.
   const current = {

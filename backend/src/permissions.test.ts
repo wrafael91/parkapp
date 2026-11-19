@@ -72,6 +72,24 @@ describe("parkapp_app privileges (NFR-12)", () => {
     );
   });
 
+  it("can insert and close a spaces version, but not edit or delete it (RI-08)", async () => {
+    await expect(
+      runAsApp(
+        "INSERT INTO cupo (tipo_vehiculo, cupos, creado_por_id) SELECT 'CARRO', 30, id FROM usuario WHERE false",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      runAsApp("UPDATE cupo SET vigente_hasta = now() WHERE false"),
+    ).resolves.toBeUndefined();
+    await expect(runAsApp("UPDATE cupo SET cupos = 99 WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(runAsApp("UPDATE cupo SET tipo_vehiculo = 'MOTO' WHERE false")).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(runAsApp("DELETE FROM cupo WHERE false")).rejects.toThrow(/permission denied/);
+  });
+
   it("cannot change the cap a stay entered with (BR-11)", async () => {
     await expect(runAsApp("UPDATE estadia SET tope_periodo_id = NULL WHERE false")).rejects.toThrow(
       /permission denied/,

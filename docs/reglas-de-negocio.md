@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14) |
-| Versión | 1.9 — 14 de noviembre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110) |
+| Versión | 1.10 — 19 de noviembre de 2026 |
 
 ## 1. Propósito
 
@@ -15,7 +15,7 @@ del servicio de parqueo en RoloPark. Cada regla tiene un identificador único
 ## 2. Actores
 
 - **Operador:** registra ingresos y salidas, y entrega el comprobante.
-- **Administrador:** configura tarifas, periodo de gracia y tope por periodo; anula y corrige registros. No modifica los topes legales (BR-15).
+- **Administrador:** configura tarifas, periodo de gracia, tope por periodo y cupos; anula y corrige registros. No modifica los topes legales (BR-15).
 - **Cliente:** propietario o conductor del vehículo. No usa el sistema directamente.
 
 ## 3. Marco normativo
@@ -54,6 +54,7 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 | BR-02 | Cada ingreso registra placa, tipo de vehículo y color (obligatorios), marca (opcional), fecha y hora de ingreso, y el operador que lo registró. | Decisión de diseño |
 | BR-03 | Una placa no puede tener más de una estadía activa al mismo tiempo. Si se intenta registrar el ingreso de una placa que ya está dentro, el sistema lo rechaza y alerta al operador (posible placa clonada). | Decisión de diseño |
 | BR-04 | Al registrar la salida, el sistema muestra los datos registrados al ingreso para que el operador verifique que coinciden con el vehículo que sale. | Decisión de diseño |
+| BR-19 | El administrador puede fijar los cupos de cada tipo de vehículo, de 0 a 10.000. Los cupos libres son los cupos menos los vehículos de ese tipo con estadía activa; las estadías cerradas y anuladas no cuentan. Si no quedan cupos libres de un tipo, el sistema rechaza el ingreso de ese tipo, alerta al operador y registra el intento en la bitácora con los datos del vehículo rechazado; los demás tipos siguen entrando, y la salida nunca se bloquea. Los cupos pueden quedar por debajo de los vehículos que ya están dentro: esos vehículos no se afectan, y los nuevos de ese tipo se rechazan hasta que haya cupo. Un tipo sin cupos configurados no tiene límite. Cada cambio crea una versión nueva. | `docs/diagnostico.md` (capacidad de los parqueaderos A y B); decisión del Product Owner (16 y 17 de noviembre de 2026); ver sección 6 |
 
 ### 4.2 Liquidación del cobro
 
@@ -121,6 +122,19 @@ descuento, redondeado (BR-07).
 | 12 | 15 h | 900 | $29.700 | $12.760 | $16.900 | BR-07, BR-18 ($11.000 + $5.940 = $16.940) |
 | 13 | 30 h | 1.800 | $59.400 | $26.400 | $33.000 | BR-18 (tres bloques; el último, parcial, también llega al tope) |
 
+Con 3 cupos de carros y 2 de motos. Estos ejemplos se convierten en casos de
+prueba en S3-09.
+
+| Caso | Situación | Resultado | Reglas |
+|---|---|---|---|
+| 14 | Hay 3 carros dentro e intenta entrar otro carro | Se rechaza y queda en la bitácora; quedan 0 cupos libres | BR-19 |
+| 15 | Igual que el caso 14, e intenta entrar una moto (ninguna dentro) | Entra: cada tipo tiene sus cupos | BR-19 |
+| 16 | Hay 3 carros dentro y sale uno | Queda 1 cupo libre, y el siguiente carro entra | BR-19 |
+| 17 | Hay 3 estadías de carro y el administrador anula una | Queda 1 cupo libre: la anulada no cuenta | BR-12, BR-19 |
+| 18 | Hay 2 carros dentro y el administrador baja los cupos de carros a 1 | Los 2 carros siguen dentro y los nuevos se rechazan hasta que salgan los 2 | BR-19 |
+| 19 | El administrador fija 0 cupos de motos (como el parqueadero B, que no recibe motos) | Ninguna moto entra | BR-19 |
+| 20 | No hay cupos configurados para carros | Los carros entran sin límite | BR-19 |
+
 ## 6. Supuestos e interpretaciones
 
 - **BR-06:** la norma no regula los segundos. Se cobra solo el minuto completo por 
@@ -143,6 +157,14 @@ descuento, redondeado (BR-07).
   estadía que cruza el cambio de turno paga dos turnos, y en RoloPark solo
   cuando pasa del periodo. Es una interpretación nuestra, que se valida con B en
   la visita (`docs/diagnostico.md`, sección 6).
+- **BR-19:** los cupos libres se calculan con los registros de las estadías, no
+  con un contador aparte, para que el número que ve el operador no pueda
+  desviarse de lo registrado. El sistema no ve los espacios físicos: si un
+  vehículo sale sin que se registre su salida, ocupa un cupo hasta que se
+  registre. Rechazar el ingreso cuando no hay cupo evita registrar más vehículos
+  de los que caben, y el administrador amplía los cupos si se habilitan más
+  espacios. Cada rechazo queda en la bitácora con el operador, para que un
+  ingreso sin registro o una salida falsa para liberar un cupo dejen rastro.
 
 ## 7. Fuera de alcance
 
@@ -171,6 +193,7 @@ el diccionario de datos (`docs/modelo-datos.md`, sección 4).
 | Periodo de gracia | `gracePeriod` |
 | Tope por periodo | `periodCap` |
 | Descuento por tope | `capDiscount` |
+| Cupos (de un tipo de vehículo) | `capacity` (atributo `spaces`) |
 | Comprobante de pago | `receipt` |
 | Anulación | `void` |
 | Usuario | `user` |
@@ -232,3 +255,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.7 | 22 de octubre de 2026 | Actores: el administrador ya no figura como quien configura los topes legales, que contradecía BR-15; se agrega que corrige registros (BR-17). |
 | 1.8 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Los ejemplos de la sección 5 citan la tarea que los convirtió en pruebas, S2-09 (antes S1-08). (#71) |
 | 1.9 | 14 de noviembre de 2026 | BR-18: tope por periodo configurable, con los bloques contados desde el ingreso. BR-11 incluye el tope y BR-14 su descuento. Ejemplos 7 a 13 con el esquema del parqueadero B y supuesto de BR-18 en la sección 6. El tope diario sale de la sección 7 y entran los turnos fijos por reloj. Actores y glosario con el tope. (#14) |
+| 1.10 | 19 de noviembre de 2026 | BR-19: cupos por tipo de vehículo, calculados con las estadías activas, con el ingreso rechazado cuando no quedan. Ejemplos 14 a 20 y supuesto de BR-19 en la sección 6. Actores y glosario con los cupos. (#110) |

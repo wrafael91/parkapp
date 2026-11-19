@@ -189,6 +189,10 @@ export function createStaysRouter(prisma: PrismaClient): Router {
           "La placa ya tiene una estadía activa: posible placa clonada.",
         );
         return;
+      // BR-19: the rejection was committed with its audit event.
+      case "noCapacity":
+        sendError(res, 409, "SIN_CUPO", "No quedan cupos para ese tipo de vehículo.");
+        return;
       case "registered":
         res.status(201).json(toEstadia(outcome.stay));
     }

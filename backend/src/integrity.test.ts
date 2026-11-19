@@ -425,6 +425,81 @@ describe("period cap constraints", () => {
   });
 });
 
+interface CapacityValues {
+  vehicleType?: "CARRO" | "MOTO";
+  spaces?: number;
+  validFrom?: string;
+  validTo?: string | null;
+}
+
+// Inserts a spaces version, closed by default so it never collides with the current
+// spaces of a development database.
+async function insertCapacity(tx: Tx, f: Fixture, values: CapacityValues = {}): Promise<number> {
+  const v = {
+    vehicleType: "CARRO",
+    spaces: 30,
+    validFrom: "2026-01-01T00:00:00Z",
+    validTo: "2026-01-02T00:00:00Z",
+    ...values,
+  };
+  const [capacity] = await tx.$queryRawUnsafe<{ id: number }[]>(
+    `INSERT INTO cupo (tipo_vehiculo, cupos, vigente_desde, vigente_hasta, creado_por_id)
+     VALUES ($1::tipo_vehiculo, $2, $3::timestamptz, $4::timestamptz, $5) RETURNING id`,
+    v.vehicleType,
+    v.spaces,
+    v.validFrom,
+    v.validTo,
+    f.userId,
+  );
+  return capacity!.id;
+}
+
+describe("capacity constraints", () => {
+  it("accepts 0 and 10,000 spaces and one current version per vehicle type", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        await insertCapacity(tx, f, { spaces: 0 });
+        await insertCapacity(tx, f, { spaces: 10000 });
+        await tx.$executeRawUnsafe(
+          "UPDATE cupo SET vigente_hasta = now() WHERE vigente_hasta IS NULL",
+        );
+        await insertCapacity(tx, f, { validFrom: "2026-01-02T00:00:00Z", validTo: null });
+        await insertCapacity(tx, f, {
+          vehicleType: "MOTO",
+          validFrom: "2026-01-02T00:00:00Z",
+          validTo: null,
+        });
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects spaces below 0 or above 10,000 (RI-21)", async () => {
+    for (const spaces of [-1, 10001]) {
+      await expect(scenario((tx, f) => insertCapacity(tx, f, { spaces }))).rejects.toThrow(
+        /cupo_cupos_validos/,
+      );
+    }
+  });
+
+  it("rejects a spaces version that does not end after it starts (RI-07)", async () => {
+    for (const validTo of ["2025-12-31T00:00:00Z", "2026-01-01T00:00:00Z"]) {
+      await expect(scenario((tx, f) => insertCapacity(tx, f, { validTo }))).rejects.toThrow(
+        /cupo_vigencia_valida/,
+      );
+    }
+  });
+
+  it("rejects a second current version for the same vehicle type (RI-07)", async () => {
+    await expect(
+      scenario(async (tx, f) => {
+        for (let i = 0; i < 2; i++) {
+          await insertCapacity(tx, f, { vehicleType: "MOTO", validTo: null });
+        }
+      }),
+    ).rejects.toThrow(/cupo_vigente_unico/);
+  });
+});
+
 interface ReceiptValues {
   fullMinutes: number;
   subtotal: number;
