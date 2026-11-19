@@ -16,8 +16,16 @@ const WRONG_CREDENTIALS = {
 const INTERNAL_ERROR = {
   error: { codigo: "ERROR_INTERNO", mensaje: "Ocurrió un error inesperado." },
 };
-// Once signed in, the page asks for the vehicles inside (Stays.tsx).
+// Once signed in, the page asks for the vehicles inside and then for the board
+// of spaces (Stays.tsx), without spaces as in production before the
+// administrator sets them.
 const NO_STAYS = { estadias: [] };
+const NO_SPACES = {
+  cupos: [
+    { tipoVehiculo: "CARRO", cupos: null, ocupados: 0, libres: null },
+    { tipoVehiculo: "MOTO", cupos: null, ocupados: 0, libres: null },
+  ],
+};
 
 describe("on load", () => {
   it("shows the sign-in form when there is no active session", async () => {
@@ -34,7 +42,11 @@ describe("on load", () => {
   });
 
   it("shows the user and the sign-out button when a session is active", async () => {
-    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS));
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
+    );
     render(<App />);
     await screen.findByText("Sesión iniciada: Ana Pérez");
     screen.getByRole("button", { name: "Cerrar sesión" });
@@ -64,6 +76,7 @@ describe("sign in", () => {
       jsonResponse(401, NO_SESSION),
       jsonResponse(200, ACTIVE_SESSION),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
     );
     const user = userEvent.setup();
     render(<App />);
@@ -106,6 +119,7 @@ describe("sign out", () => {
     const fetchMock = stubFetch(
       jsonResponse(200, ACTIVE_SESSION),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
       signedOut,
     );
     const user = userEvent.setup();
@@ -120,7 +134,12 @@ describe("sign out", () => {
     ["fails", jsonResponse(500, INTERNAL_ERROR)],
     ["cannot be reached", new TypeError("Failed to fetch")],
   ])("keeps the session and says so when the server %s", async (_case, answer) => {
-    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, NO_STAYS), answer);
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
+      answer,
+    );
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
@@ -144,7 +163,11 @@ describe("stays screen", () => {
         },
       ],
     };
-    stubFetch(jsonResponse(200, ACTIVE_SESSION), jsonResponse(200, inside));
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, inside),
+      jsonResponse(200, NO_SPACES),
+    );
     render(<App />);
     await screen.findByText("ABC123");
   });
@@ -160,6 +183,7 @@ describe("stays screen", () => {
     stubFetch(
       jsonResponse(200, ACTIVE_SESSION),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
       jsonResponse(401, NO_SESSION),
     );
     const user = userEvent.setup();
@@ -195,10 +219,12 @@ describe("sections (matrix 1.2)", () => {
     stubFetch(
       jsonResponse(200, ACTIVE_SESSION),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
       jsonResponse(200, RATES),
       jsonResponse(200, GRACE_PERIOD),
       jsonResponse(200, NO_CAP),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
     );
     const user = userEvent.setup();
     render(<App />);
@@ -225,6 +251,7 @@ describe("sections (matrix 1.2)", () => {
     stubFetch(
       jsonResponse(200, ACTIVE_SESSION),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
       jsonResponse(200, { usuarios: [] }),
     );
     const user = userEvent.setup();
@@ -248,8 +275,10 @@ describe("sections (matrix 1.2)", () => {
     stubFetch(
       jsonResponse(200, { usuario: { ...ACTIVE_SESSION.usuario, rol: "OPERADOR" } }),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
       jsonResponse(200, { estadias: [], hayMas: false }),
       jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
     );
     const user = userEvent.setup();
     render(<App />);

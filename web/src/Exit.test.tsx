@@ -23,6 +23,14 @@ const MOTORCYCLE = {
   horaIngreso: "2026-11-11T02:24:00.000Z",
 };
 const BOTH = { estadias: [MOTORCYCLE, CAR] };
+// The board of spaces, asked for after the list (Stays.tsx): without spaces, as
+// in production before the administrator sets them.
+const NO_SPACES = {
+  cupos: [
+    { tipoVehiculo: "CARRO", cupos: null, ocupados: 0, libres: null },
+    { tipoVehiculo: "MOTO", cupos: null, ocupados: 0, libres: null },
+  ],
+};
 
 // The demo example: 6 min 10 s at $230 with 5 minutes of grace. The receipt
 // number is not the stay's id, so a page that showed the id would fail.
@@ -79,7 +87,7 @@ async function panelClosed() {
 
 describe("exit verification", () => {
   it("shows the entry data in place of the form and the list", async () => {
-    stubFetch(jsonResponse(200, BOTH));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -97,17 +105,21 @@ describe("exit verification", () => {
   });
 
   it("goes back to the list without asking the server when canceled", async () => {
-    const fetchMock = stubFetch(jsonResponse(200, BOTH));
+    const fetchMock = stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC12D");
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(plates()).toEqual(["ABC12D", "ABC123"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("asks for the exit of that stay with the default fetch and no body", async () => {
-    const fetchMock = stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const fetchMock = stubFetch(
+      jsonResponse(200, BOTH),
+      jsonResponse(200, NO_SPACES),
+      jsonResponse(201, RECEIPT),
+    );
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -119,7 +131,7 @@ describe("exit verification", () => {
   });
 
   it("disables the buttons until the API answers", async () => {
-    const fetchMock = stubFetch(jsonResponse(200, BOTH));
+    const fetchMock = stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES));
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
     const user = userEvent.setup();
@@ -137,7 +149,7 @@ describe("exit verification", () => {
 
 describe("receipt", () => {
   it("shows the BR-14 fields, with the times in Bogotá", async () => {
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, RECEIPT));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -175,7 +187,7 @@ describe("receipt", () => {
       ajusteRedondeo: 0,
       total: 1449000,
     };
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, long));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, long));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC12D");
@@ -209,7 +221,7 @@ describe("receipt", () => {
       ajusteRedondeo: 40,
       total: 16900,
     };
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, capped));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, capped));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -238,7 +250,7 @@ describe("receipt", () => {
       ajusteRedondeo: 39,
       total: 10950,
     };
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, notReached));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, notReached));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -253,7 +265,7 @@ describe("receipt", () => {
   });
 
   it("prints it with the browser", async () => {
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, RECEIPT));
     const print = vi.fn();
     vi.stubGlobal("print", print);
     const user = userEvent.setup();
@@ -266,7 +278,11 @@ describe("receipt", () => {
   });
 
   it("goes back to the list without that vehicle when closed", async () => {
-    const fetchMock = stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    const fetchMock = stubFetch(
+      jsonResponse(200, BOTH),
+      jsonResponse(200, NO_SPACES),
+      jsonResponse(201, RECEIPT),
+    );
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -274,7 +290,7 @@ describe("receipt", () => {
     await user.click(await screen.findByRole("button", { name: "Cerrar" }));
     expect(plates()).toEqual(["ABC12D"]);
     // The list is not asked for again.
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -282,7 +298,7 @@ describe("exit from a search", () => {
   // BR-13: a lost ticket. The operator finds the vehicle by plate and goes
   // through the same exit (BR-04).
   it("registers the exit from a filtered row and keeps the search", async () => {
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(201, RECEIPT));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(201, RECEIPT));
     const user = userEvent.setup();
     renderStays();
     await user.type(await screen.findByLabelText("Buscar por placa"), "abc");
@@ -305,7 +321,11 @@ describe("rejected exit", () => {
     ["the stay does not exist", 404, "NO_ENCONTRADO", "La estadía no existe."],
   ])("removes the vehicle and shows an alert when %s", async (_case, status, codigo, message) => {
     const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(status, rejected));
+    stubFetch(
+      jsonResponse(200, BOTH),
+      jsonResponse(200, NO_SPACES),
+      jsonResponse(status, rejected),
+    );
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
@@ -318,7 +338,7 @@ describe("rejected exit", () => {
   it("goes back to sign in when the session ended", async () => {
     const onSessionEnded = vi.fn();
     const ended = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
-    stubFetch(jsonResponse(200, BOTH), jsonResponse(401, ended));
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), jsonResponse(401, ended));
     const user = userEvent.setup();
     renderStays(onSessionEnded);
     await startExit(user, "ABC123");
@@ -330,7 +350,7 @@ describe("rejected exit", () => {
     ["fails", jsonResponse(500, { error: { codigo: "ERROR_INTERNO", mensaje: "Error." } })],
     ["cannot be reached", new TypeError("Failed to fetch")],
   ])("keeps the panel and shows a general error when the server %s", async (_case, answer) => {
-    stubFetch(jsonResponse(200, BOTH), answer);
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(200, NO_SPACES), answer);
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
