@@ -223,6 +223,7 @@ describe("sections (matrix 1.2)", () => {
       jsonResponse(200, RATES),
       jsonResponse(200, GRACE_PERIOD),
       jsonResponse(200, NO_CAP),
+      jsonResponse(200, NO_SPACES),
       jsonResponse(200, NO_STAYS),
       jsonResponse(200, NO_SPACES),
     );

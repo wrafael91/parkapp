@@ -26,6 +26,20 @@ const GRACE_PERIOD = { minutos: 5, vigenteDesde: "2026-11-07T17:35:00.000Z" };
 // Lot B's cap (BR-18), and the answer when the cap is off.
 const CAP = { topePeriodo: { horas: 12, valor: 11000, vigenteDesde: "2026-11-15T17:00:00.000Z" } };
 const NO_CAP = { topePeriodo: null };
+// The spaces (FR-24): without a limit, as in production before the administrator
+// sets them, and with the spaces of lot A.
+const NO_SPACES = {
+  cupos: [
+    { tipoVehiculo: "CARRO", cupos: null, ocupados: 0, libres: null },
+    { tipoVehiculo: "MOTO", cupos: null, ocupados: 1, libres: null },
+  ],
+};
+const LOT_A = {
+  cupos: [
+    { tipoVehiculo: "CARRO", cupos: 16, ocupados: 4, libres: 12 },
+    { tipoVehiculo: "MOTO", cupos: 300, ocupados: 1, libres: 299 },
+  ],
+};
 const NO_SESSION = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
 const INTERNAL_ERROR = {
   error: { codigo: "ERROR_INTERNO", mensaje: "Ocurrió un error inesperado." },
@@ -35,8 +49,13 @@ function apiError(codigo: string) {
   return { error: { codigo, mensaje: "Un mensaje de la API que la página no muestra." } };
 }
 
-function loaded(cap: object = CAP) {
-  return [jsonResponse(200, RATES), jsonResponse(200, GRACE_PERIOD), jsonResponse(200, cap)];
+function loaded(cap: object = CAP, spaces: object = NO_SPACES) {
+  return [
+    jsonResponse(200, RATES),
+    jsonResponse(200, GRACE_PERIOD),
+    jsonResponse(200, cap),
+    jsonResponse(200, spaces),
+  ];
 }
 
 function renderRates() {
@@ -76,6 +95,7 @@ describe("loading the rates", () => {
       "/api/tarifas",
       "/api/periodo-gracia",
       "/api/tope-periodo",
+      "/api/cupos",
     ]);
     for (const [, init] of fetchMock.mock.calls) expect(init).not.toHaveProperty("credentials");
   });
@@ -103,7 +123,12 @@ describe("loading the rates", () => {
   it.each([
     [
       "fails",
-      [jsonResponse(500, INTERNAL_ERROR), jsonResponse(200, GRACE_PERIOD), jsonResponse(200, CAP)],
+      [
+        jsonResponse(500, INTERNAL_ERROR),
+        jsonResponse(200, GRACE_PERIOD),
+        jsonResponse(200, CAP),
+        jsonResponse(200, NO_SPACES),
+      ],
     ],
     [
       "fails to load the cap",
@@ -111,11 +136,22 @@ describe("loading the rates", () => {
         jsonResponse(200, RATES),
         jsonResponse(200, GRACE_PERIOD),
         jsonResponse(500, INTERNAL_ERROR),
+        jsonResponse(200, NO_SPACES),
+      ],
+    ],
+    [
+      "fails to load the spaces",
+      [
+        jsonResponse(200, RATES),
+        jsonResponse(200, GRACE_PERIOD),
+        jsonResponse(200, CAP),
+        jsonResponse(500, INTERNAL_ERROR),
       ],
     ],
     [
       "cannot be reached",
       [
+        new TypeError("Failed to fetch"),
         new TypeError("Failed to fetch"),
         new TypeError("Failed to fetch"),
         new TypeError("Failed to fetch"),
@@ -132,6 +168,7 @@ describe("loading the rates", () => {
 
   it("goes back to sign in when the session ended (401)", async () => {
     stubFetch(
+      jsonResponse(401, NO_SESSION),
       jsonResponse(401, NO_SESSION),
       jsonResponse(401, NO_SESSION),
       jsonResponse(401, NO_SESSION),
@@ -165,7 +202,7 @@ describe("saving a rate (US-11)", () => {
       "Tarifa de carro guardada: $200 por minuto.",
     );
     expect(rowOf("Carro").slice(0, 3)).toEqual(["Carro", "$230", "$200"]);
-    const [url, init] = fetchMock.mock.calls[3];
+    const [url, init] = fetchMock.mock.calls[4];
     expect(url).toBe("/api/tarifas");
     expect(init).toEqual({
       method: "POST",
@@ -258,7 +295,7 @@ describe("saving the grace period (US-12)", () => {
     expect((await screen.findByRole("status")).textContent).toBe(
       "Periodo de gracia guardado: 10 minutos.",
     );
-    const [url, init] = fetchMock.mock.calls[3];
+    const [url, init] = fetchMock.mock.calls[4];
     expect(url).toBe("/api/periodo-gracia");
     expect(init).toEqual({
       method: "POST",
@@ -278,7 +315,7 @@ describe("saving the grace period (US-12)", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Los minutos de gracia deben ser un número entero, desde 0.",
     );
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ minutos: null }));
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(JSON.stringify({ minutos: null }));
   });
 
   it("explains a failure in an alert", async () => {
@@ -315,7 +352,7 @@ describe("saving the cap per period (US-16)", () => {
     );
     expect(capStatus()).toBe("Tope actual: $1.000 cada 1 hora");
     screen.getByRole("button", { name: "Desactivar tope" });
-    const [url, init] = fetchMock.mock.calls[3];
+    const [url, init] = fetchMock.mock.calls[4];
     expect(url).toBe("/api/tope-periodo");
     expect(init).toEqual({
       method: "POST",
@@ -336,7 +373,7 @@ describe("saving the cap per period (US-16)", () => {
     );
     expect(capStatus()).toBe("Tope actual: desactivado");
     expect(screen.queryByRole("button", { name: "Desactivar tope" })).toBeNull();
-    const [url, init] = fetchMock.mock.calls[3];
+    const [url, init] = fetchMock.mock.calls[4];
     expect(url).toBe("/api/tope-periodo");
     expect(init?.body).toBe(JSON.stringify({ activo: false }));
   });
@@ -351,7 +388,7 @@ describe("saving the cap per period (US-16)", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "El periodo debe ser de 1 a 24 horas, y el valor, un número entero de pesos entre $1 y $1.000.000.",
     );
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ horas: null, valor: null }));
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(JSON.stringify({ horas: null, valor: null }));
   });
 
   it("disables both buttons while it waits for the answer", async () => {
@@ -419,6 +456,179 @@ describe("saving the cap per period (US-16)", () => {
     const onSessionEnded = renderRates();
 
     await user.click(await screen.findByRole("button", { name: "Guardar tope" }));
+
+    await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+});
+
+// The cells of the row of a vehicle type in the spaces table.
+function spacesRow(vehicle: string) {
+  const row = screen.getByRole("cell", { name: vehicle }).closest("tr");
+  if (row === null) throw new Error(`no row for ${vehicle}`);
+  return within(row)
+    .getAllByRole("cell")
+    .map((cell) => cell.textContent)
+    .slice(0, 3);
+}
+
+describe("spaces of the lot (US-17, BR-19)", () => {
+  it("shows the vehicles inside and the spaces of each type, and fills the fields", async () => {
+    stubFetch(...loaded(CAP, LOT_A));
+    renderRates();
+
+    await screen.findByRole("heading", { name: "Cupos del parqueadero" });
+    expect(spacesRow("Carros")).toEqual(["Carros", "4", "16"]);
+    expect(spacesRow("Motos")).toEqual(["Motos", "1", "300"]);
+    expect(screen.getByLabelText("Nuevos cupos de carros")).toHaveProperty("value", "16");
+    expect(screen.getByLabelText("Nuevos cupos de motos")).toHaveProperty("value", "300");
+  });
+
+  it("shows a type without a limit, with an empty field", async () => {
+    stubFetch(...loaded());
+    renderRates();
+
+    await screen.findByRole("heading", { name: "Cupos del parqueadero" });
+    expect(spacesRow("Carros")).toEqual(["Carros", "0", "Sin límite"]);
+    expect(screen.getByLabelText("Nuevos cupos de carros")).toHaveProperty("value", "");
+  });
+
+  it("sends the spaces of a type and shows them as the current ones", async () => {
+    const saved = { tipoVehiculo: "CARRO", cupos: 30, ocupados: 0, libres: 30 };
+    const fetchMock = stubFetch(...loaded(), jsonResponse(201, saved));
+    const user = userEvent.setup();
+    renderRates();
+
+    const field = await screen.findByLabelText("Nuevos cupos de carros");
+    await user.type(field, "30");
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de carros" }));
+
+    expect((await screen.findByRole("status")).textContent).toBe("Cupos de carros guardados: 30.");
+    expect(spacesRow("Carros")).toEqual(["Carros", "0", "30"]);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/cupos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipoVehiculo: "CARRO", cupos: 30 }),
+    });
+  });
+
+  it("groups the thousands of the spaces saved", async () => {
+    const saved = { tipoVehiculo: "MOTO", cupos: 10000, ocupados: 1, libres: 9999 };
+    stubFetch(...loaded(), jsonResponse(201, saved));
+    const user = userEvent.setup();
+    renderRates();
+
+    await user.type(await screen.findByLabelText("Nuevos cupos de motos"), "10000");
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de motos" }));
+
+    expect((await screen.findByRole("status")).textContent).toBe(
+      "Cupos de motos guardados: 10.000.",
+    );
+    expect(spacesRow("Motos")).toEqual(["Motos", "1", "10.000"]);
+  });
+
+  it("removes the limit when the field is empty", async () => {
+    const removed = { tipoVehiculo: "MOTO", cupos: null, ocupados: 1, libres: null };
+    const fetchMock = stubFetch(...loaded(CAP, LOT_A), jsonResponse(200, removed));
+    const user = userEvent.setup();
+    renderRates();
+
+    await user.clear(await screen.findByLabelText("Nuevos cupos de motos"));
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de motos" }));
+
+    expect((await screen.findByRole("status")).textContent).toBe(
+      "Límite de motos quitado: las motos entran sin límite de cupos.",
+    );
+    expect(spacesRow("Motos")).toEqual(["Motos", "1", "Sin límite"]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/cupos",
+      expect.objectContaining({ body: JSON.stringify({ tipoVehiculo: "MOTO", cupos: null }) }),
+    );
+  });
+
+  it("disables the buttons while it waits for the answer", async () => {
+    const fetchMock = stubFetch(...loaded());
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const user = userEvent.setup();
+    renderRates();
+
+    await user.type(await screen.findByLabelText("Nuevos cupos de carros"), "30");
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de carros" }));
+    const buttons = ["Guardar cupos de carros", "Guardar cupos de motos"].map(
+      (name) => screen.getByRole("button", { name }) as HTMLButtonElement,
+    );
+    expect(buttons.map((button) => button.disabled)).toEqual([true, true]);
+
+    answer(jsonResponse(201, { tipoVehiculo: "CARRO", cupos: 30, ocupados: 0, libres: 30 }));
+    await screen.findByRole("status");
+    expect(buttons.map((button) => button.disabled)).toEqual([false, false]);
+  });
+
+  it.each([
+    [
+      "the spaces are not valid (400)",
+      jsonResponse(400, apiError("ENTRADA_INVALIDA")),
+      "Los cupos deben ser un número entero de 0 a 10.000. Deja el campo vacío para quitar el límite.",
+    ],
+    [
+      "another administrator saved first (409)",
+      jsonResponse(409, apiError("CUPOS_CAMBIARON")),
+      "Otro administrador cambió los cupos al mismo tiempo. Recarga la página, revisa los valores y vuelve a guardar.",
+    ],
+    [
+      "the user is not an administrator (403)",
+      jsonResponse(403, apiError("ACCESO_DENEGADO")),
+      "Solo un administrador puede cambiar los cupos.",
+    ],
+    [
+      "the server fails",
+      jsonResponse(500, INTERNAL_ERROR),
+      "No se pudo guardar. Intenta de nuevo.",
+    ],
+    [
+      "the server cannot be reached",
+      new TypeError("Failed to fetch"),
+      "No se pudo guardar. Intenta de nuevo.",
+    ],
+  ])(
+    "explains in an alert when %s, and keeps the current spaces",
+    async (_case, answer, message) => {
+      stubFetch(...loaded(CAP, LOT_A), answer);
+      const user = userEvent.setup();
+      renderRates();
+
+      const field = await screen.findByLabelText("Nuevos cupos de carros");
+      await user.clear(field);
+      await user.type(field, "20000");
+      await user.click(screen.getByRole("button", { name: "Guardar cupos de carros" }));
+
+      expect((await screen.findByRole("alert")).textContent).toBe(message);
+      expect(spacesRow("Carros")).toEqual(["Carros", "4", "16"]);
+      expect(field).toHaveProperty("value", "20000");
+    },
+  );
+
+  it("shows a type without a limit when someone else removed it first (409)", async () => {
+    stubFetch(...loaded(CAP, LOT_A), jsonResponse(409, apiError("SIN_CUPOS_CONFIGURADOS")));
+    const user = userEvent.setup();
+    renderRates();
+
+    await user.clear(await screen.findByLabelText("Nuevos cupos de motos"));
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de motos" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Las motos ya no tenían límite de cupos.",
+    );
+    expect(spacesRow("Motos")).toEqual(["Motos", "1", "Sin límite"]);
+  });
+
+  it("goes back to sign in when the session ended while saving (401)", async () => {
+    stubFetch(...loaded(), jsonResponse(401, NO_SESSION));
+    const user = userEvent.setup();
+    const onSessionEnded = renderRates();
+
+    await user.type(await screen.findByLabelText("Nuevos cupos de carros"), "30");
+    await user.click(screen.getByRole("button", { name: "Guardar cupos de carros" }));
 
     await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
   });
