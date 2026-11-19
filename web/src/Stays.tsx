@@ -1,13 +1,26 @@
 import { useEffect, useState, type SubmitEvent } from "react";
 import Exit from "./Exit.tsx";
-import { formatEntryTime, normalizePlateSearch, VEHICLE_TYPES, type Estadia } from "./stay.ts";
+import {
+  formatEntryTime,
+  groupDigits,
+  normalizePlateSearch,
+  VEHICLE_TYPES,
+  type Estadia,
+} from "./stay.ts";
 
-// GET and POST /api/estadias (ADR 0008), with a relative URL and the default
-// fetch, as in App.tsx: the browser sends the session cookie by itself, without
-// credentials: "include" (docs/modelo-amenazas.md, 7.3).
+// GET and POST /api/estadias and GET /api/cupos (ADR 0008), with a relative URL
+// and the default fetch, as in App.tsx: the browser sends the session cookie by
+// itself, without credentials: "include" (docs/modelo-amenazas.md, 7.3).
 const STAYS_URL = "/api/estadias";
+const CAPACITY_URL = "/api/cupos";
 
 type List = { status: "loading" } | { status: "failed" } | { status: "loaded"; stays: Estadia[] };
+
+// The spaces of each vehicle type as the API answers them (FR-24); null when the
+// type has no limit (BR-19).
+type Cupo = { tipoVehiculo: "CARRO" | "MOTO"; cupos: number | null };
+
+type Board = { status: "loading" } | { status: "failed" } | { status: "loaded"; cupos: Cupo[] };
 
 // The screen after signing in: the entry form and the vehicles inside (US-06,
 // US-07), and the exit of each one (US-08, US-09). A 401 means the session
@@ -21,15 +34,23 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   const [exitError, setExitError] = useState<string | null>(null);
   // The plate search, as typed (FR-11). It stays while an exit is registered.
   const [search, setSearch] = useState("");
+  const [board, setBoard] = useState<Board>({ status: "loading" });
+  // Changes when the list and the board must be asked for again: after an entry
+  // was rejected because no spaces were left, another operator may have
+  // registered vehicles this screen does not show yet.
+  const [loads, setLoads] = useState(0);
 
   useEffect(() => {
-    // Loads once, when the screen appears. The API sends the newest first.
+    // Loads when the screen appears. The API sends the newest first. The board
+    // is asked for after the list, so it counts the same vehicles.
     const controller = new AbortController();
-    fetch(`${STAYS_URL}?estado=ACTIVA`, { signal: controller.signal })
+    const { signal } = controller;
+    fetch(`${STAYS_URL}?estado=ACTIVA`, { signal })
       .then(async (response) => {
         if (response.ok) {
           const body: { estadias: Estadia[] } = await response.json();
           setList({ status: "loaded", stays: body.estadias });
+          await loadBoard(signal);
         } else if (response.status === 401) {
           onSessionEnded();
         } else {
@@ -37,12 +58,24 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setList({ status: "failed" });
+        if (!signal.aborted) setList({ status: "failed" });
       });
     return () => controller.abort();
     // Not a dependency: onSessionEnded only sets the session state in App.tsx,
-    // so the first one is enough, and the list is not asked for again.
-  }, []);
+    // so the first one is enough.
+  }, [loads]);
+
+  async function loadBoard(signal: AbortSignal) {
+    const response = await fetch(CAPACITY_URL, { signal }).catch(() => null);
+    if (response?.ok) {
+      const body: { cupos: Cupo[] } = await response.json();
+      setBoard({ status: "loaded", cupos: body.cupos });
+    } else if (response?.status === 401) {
+      onSessionEnded();
+    } else if (!signal.aborted) {
+      setBoard({ status: "failed" });
+    }
+  }
 
   // The new stay is the newest, so it goes first, as the API would list it.
   function addStay(stay: Estadia) {
@@ -86,10 +119,15 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
     <div className="operation">
       <section className="card">
         <h2>Registrar ingreso</h2>
-        <EntryForm onRegistered={addStay} onSessionEnded={onSessionEnded} />
+        <EntryForm
+          onRegistered={addStay}
+          onNoSpaces={() => setLoads((count) => count + 1)}
+          onSessionEnded={onSessionEnded}
+        />
       </section>
       <section className="card">
         <h2>Vehículos dentro</h2>
+        {list.status === "loaded" && <CapacityBoard board={board} stays={list.stays} />}
         {exitError && (
           <p role="alert" className="alert">
             {exitError}
@@ -172,12 +210,65 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   );
 }
 
+// "1 libre", "4 libres".
+function count(value: number, one: string, many: string): string {
+  return `${groupDigits(value)} ${value === 1 ? one : many}`;
+}
+
+const BOARD_NAMES = { CARRO: "Carros", MOTO: "Motos" };
+
+// BR-19 and FR-24: for each vehicle type, the free spaces, the vehicles inside
+// and the spaces, or only the vehicles inside when the type has no limit. The
+// vehicles inside are counted in the list on screen, which every entry and exit
+// keeps up to date, so the board and the list always agree.
+function CapacityBoard({ board, stays }: { board: Board; stays: Estadia[] }) {
+  if (board.status === "loading") return null;
+  if (board.status === "failed") {
+    return <p className="muted">No se pudo cargar el marcador de cupos.</p>;
+  }
+  return (
+    <ul className="capacity-board" aria-label="Cupos">
+      {board.cupos.map(({ tipoVehiculo, cupos }) => {
+        const inside = stays.filter((stay) => stay.tipoVehiculo === tipoVehiculo).length;
+        const occupied = count(inside, "ocupado", "ocupados");
+        if (cupos === null) {
+          return (
+            <li key={tipoVehiculo}>
+              {BOARD_NAMES[tipoVehiculo]}: {occupied}
+            </li>
+          );
+        }
+        const free = Math.max(0, cupos - inside);
+        return (
+          <li key={tipoVehiculo}>
+            {BOARD_NAMES[tipoVehiculo]}: {count(free, "libre", "libres")} · {occupied} ·{" "}
+            {count(cupos, "cupo", "cupos")}
+            {free === 0 && (
+              <>
+                {" · "}
+                <strong className="full">Lleno</strong>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const PLURAL_TYPES = { CARRO: "carros", MOTO: "motos" };
+
 // The page reads the API's error code (ADR 0008, decision 6).
-function entryError(codigo: string | undefined): string {
+function entryError(codigo: string | undefined, tipoVehiculo: string): string {
   switch (codigo) {
     // BR-03 and FR-09: the alert of a possible cloned plate.
     case "PLACA_ACTIVA":
       return "La placa ya tiene una estadía activa: posible placa clonada.";
+    // BR-19: the other vehicle type keeps entering.
+    case "SIN_CUPO": {
+      const vehicles = PLURAL_TYPES[tipoVehiculo as keyof typeof PLURAL_TYPES] ?? "vehículos";
+      return `No se pueden registrar más ingresos de ${vehicles}: no quedan cupos. Contacta al administrador.`;
+    }
     case "ENTRADA_INVALIDA":
       return "Revisa los datos: la placa de carro es como ABC123 y la de moto como ABC12D.";
     default:
@@ -187,9 +278,11 @@ function entryError(codigo: string | undefined): string {
 
 function EntryForm({
   onRegistered,
+  onNoSpaces,
   onSessionEnded,
 }: {
   onRegistered: (stay: Estadia) => void;
+  onNoSpaces: () => void;
   onSessionEnded: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -231,7 +324,10 @@ function EntryForm({
     const body: { error?: { codigo?: string } } | null = response
       ? await response.json().catch(() => null)
       : null;
-    setError(entryError(body?.error?.codigo));
+    const codigo = body?.error?.codigo;
+    setError(entryError(codigo, String(form.get("tipoVehiculo"))));
+    // The board and the list may be behind: ask for them again.
+    if (codigo === "SIN_CUPO") onNoSpaces();
   }
 
   return (

@@ -1,6 +1,6 @@
-/* The rate, the grace period and the cap (Image 4 of the article): on a wide
-   screen the rate on the left, and the grace period and the cap on the right;
-   one under the other on a phone. */
+/* The rate, the grace period, the cap and the spaces (Image 4 of the article):
+   on a wide screen the rate and the spaces on the left, and the grace period and
+   the cap on the right; one under the other on a phone. */
 .rates {
   display: grid;
   gap: 1.25rem;
@@ -16,8 +16,9 @@
     grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
   }
 
-  .rates > .card:first-child {
-    grid-row: span 2;
+  .rates > .card:last-child {
+    grid-row: 2;
+    grid-column: 1;
   }
 }
 
