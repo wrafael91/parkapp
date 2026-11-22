@@ -1,4 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from "react";
+import Correction, { type Reemplazo } from "./Correction.tsx";
 import Exit from "./Exit.tsx";
 import {
   formatEntryTime,
@@ -39,6 +40,11 @@ export default function Stays({
   const [leaving, setLeaving] = useState<Estadia | null>(null);
   // Why the last exit could not be registered, when the stay was gone.
   const [exitError, setExitError] = useState<string | null>(null);
+  // The stay being corrected (US-10). Like the exit, the correction takes the
+  // place of the form and the list.
+  const [correcting, setCorrecting] = useState<Estadia | null>(null);
+  // The last correction that was saved.
+  const [corrected, setCorrected] = useState<string | null>(null);
   // The plate search, as typed (FR-11). It stays while an exit is registered.
   const [search, setSearch] = useState("");
   const [board, setBoard] = useState<Board>({ status: "loading" });
@@ -91,6 +97,19 @@ export default function Stays({
     );
   }
 
+  // The replacement takes the row of the voided stay, in the same place: it
+  // keeps the entry time, so the list stays in the API's order (BR-17).
+  function replaceStay(id: number, replacement: Reemplazo) {
+    setList((current) =>
+      current.status === "loaded"
+        ? {
+            status: "loaded",
+            stays: current.stays.map((stay) => (stay.id === id ? replacement : stay)),
+          }
+        : current,
+    );
+  }
+
   // The stay left, or it was no longer active, so it leaves the list.
   function removeStay(id: number) {
     setList((current) =>
@@ -105,6 +124,22 @@ export default function Stays({
   const searched = normalizePlateSearch(search);
   const shown =
     list.status === "loaded" ? list.stays.filter((stay) => stay.placa.includes(searched)) : [];
+
+  if (correcting) {
+    return (
+      <Correction
+        stay={correcting}
+        onCorrected={(replacement) => {
+          replaceStay(correcting.id, replacement);
+          setCorrected(
+            `Ingreso corregido: ${replacement.placa}. La estadía anterior quedó anulada.`,
+          );
+          setCorrecting(null);
+        }}
+        onClose={() => setCorrecting(null)}
+      />
+    );
+  }
 
   if (leaving) {
     return (
@@ -135,6 +170,11 @@ export default function Stays({
       <section className="card">
         <h2>Vehículos dentro</h2>
         {list.status === "loaded" && <CapacityBoard board={board} stays={list.stays} />}
+        {corrected && (
+          <p role="status" className="saved">
+            {corrected}
+          </p>
+        )}
         {exitError && (
           <p role="alert" className="alert">
             {exitError}
@@ -200,6 +240,7 @@ export default function Stays({
                         aria-label={`Registrar salida de ${stay.placa}`}
                         onClick={() => {
                           setExitError(null);
+                          setCorrected(null);
                           setLeaving(stay);
                         }}
                       >
@@ -210,6 +251,11 @@ export default function Stays({
                           type="button"
                           className="button-secondary"
                           aria-label={`Corregir ingreso de ${stay.placa}`}
+                          onClick={() => {
+                            setExitError(null);
+                            setCorrected(null);
+                            setCorrecting(stay);
+                          }}
                         >
                           Corregir
                         </button>
