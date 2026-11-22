@@ -36,6 +36,11 @@ export async function correctStay(db: Db, input: CorrectStayInput): Promise<Corr
   }
   const color = input.color.trim();
   const brand = input.brand?.trim() || null;
+  // The lock of the replacement's type, the one entries take (BR-19). From here on,
+  // no entry or correction of this type runs at the same time: a waiting entry
+  // counts the replacement, and the same plate cannot become active twice.
+  await lockVehicleType(db, input.vehicleType);
+  // Read after the lock: a correction that waited sees the stay another one voided.
   const stay = await db.stay.findUnique({ where: { id: input.stayId } });
   if (stay === null) {
     return { ok: false, reason: "notFound" };
@@ -58,8 +63,26 @@ export async function correctStay(db: Db, input: CorrectStayInput): Promise<Corr
   if (active !== null) {
     return { ok: false, reason: "plateActive" };
   }
-  await db.stay.update({
-    where: { id: stay.id },
+  // BR-11 and RI-06: a new type takes its rate in force at the original entry,
+  // not the current one. The grace period and the cap do not depend on the type.
+  let rateId = stay.rateId;
+  if (input.vehicleType !== stay.vehicleType) {
+    const rate = await db.rate.findFirst({
+      where: {
+        vehicleType: input.vehicleType,
+        validFrom: { lte: stay.entryTime },
+        OR: [{ validTo: null }, { validTo: { gt: stay.entryTime } }],
+      },
+    });
+    if (rate === null) {
+      return { ok: false, reason: "noRate" };
+    }
+    rateId = rate.id;
+  }
+  // RI-04: only an active stay is voided. An exit or a correction of another type
+  // that got there first leaves nothing to update, and this one stops here.
+  const voided = await db.stay.updateMany({
+    where: { id: stay.id, status: "ACTIVE" },
     data: {
       status: "VOIDED",
       voidedAt: input.now,
@@ -67,8 +90,12 @@ export async function correctStay(db: Db, input: CorrectStayInput): Promise<Corr
       voidReason: input.reason,
     },
   });
+  if (voided.count === 0) {
+    return { ok: false, reason: "notActive" };
+  }
   // RI-19: the replacement points to the voided stay and keeps its entry time and
-  // the user who registered the entry.
+  // the user who registered the entry. Spaces are not checked: the vehicle is
+  // already inside (BR-19).
   const replacement = await db.stay.create({
     data: {
       plate,
@@ -77,7 +104,7 @@ export async function correctStay(db: Db, input: CorrectStayInput): Promise<Corr
       brand,
       entryTime: stay.entryTime,
       entryById: stay.entryById,
-      rateId: stay.rateId,
+      rateId,
       gracePeriodId: stay.gracePeriodId,
       periodCapId: stay.periodCapId,
       replacesId: stay.id,
