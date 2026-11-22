@@ -24,8 +24,14 @@ type Board = { status: "loading" } | { status: "failed" } | { status: "loaded"; 
 
 // The screen after signing in: the entry form and the vehicles inside (US-06,
 // US-07), and the exit of each one (US-08, US-09). A 401 means the session
-// ended, so the page goes back to sign in.
-export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }) {
+// ended, so the page goes back to sign in. canCorrect is true for an
+// administrator, who can also correct each entry (US-10).
+export default function Stays({
+  onSessionEnded,
+}: {
+  onSessionEnded: () => void;
+  canCorrect?: boolean;
+}) {
   const [list, setList] = useState<List>({ status: "loading" });
   // The stay whose exit is being registered. While there is one, the exit takes
   // the place of the form and the list.
