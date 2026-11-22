@@ -109,6 +109,30 @@ function post(app: Express, url: string, cookie: string | undefined, body: objec
   return (cookie === undefined ? req : req.set("Cookie", cookie)).send(body);
 }
 
+// A new decree as its migration would load it (BR-15): the caps in force close
+// when it starts, and the new ones start then, with made-up values. Only the
+// migrations write tope_legal, so this runs as its owner and goes back to
+// parkapp_app.
+async function loadDecree(db: Prisma.TransactionClient, from: Date) {
+  await db.$executeRawUnsafe("RESET ROLE");
+  await db.$executeRawUnsafe(
+    "UPDATE tope_legal SET vigente_hasta = $1::timestamptz WHERE vigente_hasta IS NULL",
+    from.toISOString(),
+  );
+  await db.$executeRawUnsafe(
+    `INSERT INTO tope_legal (tipo_vehiculo, valor_minuto, con_sello_oro, norma, vigente_desde)
+     VALUES ('CARRO', 245, false, 'Decreto de prueba', $1::timestamptz),
+            ('MOTO', 172, false, 'Decreto de prueba', $1::timestamptz)`,
+    from.toISOString(),
+  );
+  await db.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+}
+
+// The legal cap of each vehicle type in an answer of GET /api/tarifas.
+function legalCaps(body: { tarifas: { tipoVehiculo: string; topeLegal: number }[] }) {
+  return body.tarifas.map((tarifa) => [tarifa.tipoVehiculo, tarifa.topeLegal]);
+}
+
 describe("GET /api/tarifas and GET /api/periodo-gracia (FR-16, FR-17)", () => {
   it("answers the current rate of each vehicle type with its legal cap", async () => {
     await withApp(async (app, db) => {
@@ -133,6 +157,43 @@ describe("GET /api/tarifas and GET /api/periodo-gracia (FR-16, FR-17)", () => {
           },
         ],
       });
+    });
+  });
+
+  // BR-15: when the District updates the caps (first quarter of each year), a
+  // migration closes the caps in force and inserts the new ones. The screen must
+  // show the cap in force, not the first one in the table: with one cap per
+  // vehicle type, a query without the filter gave the same answer and no test
+  // noticed (S2-25).
+  it("answers the cap in force after the yearly update of the decree, not the first one", async () => {
+    await withApp(async (app, db) => {
+      await loadDecree(db, minutesFromNow(-20));
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await get(app, "/api/tarifas", cookie);
+
+      expect(response.status).toBe(200);
+      expect(legalCaps(response.body)).toEqual([
+        ["CARRO", 245],
+        ["MOTO", 172],
+      ]);
+    });
+  });
+
+  // The migration of a new decree can be deployed before the decree takes
+  // effect: until then, the cap in force is still the old one.
+  it("keeps answering the old cap while the new decree has not started", async () => {
+    await withApp(async (app, db) => {
+      await loadDecree(db, minutesFromNow(60));
+      const { cookie } = await signedIn(db, "ADMINISTRATOR");
+
+      const response = await get(app, "/api/tarifas", cookie);
+
+      expect(response.status).toBe(200);
+      expect(legalCaps(response.body)).toEqual([
+        ["CARRO", 230],
+        ["MOTO", 161],
+      ]);
     });
   });
 
