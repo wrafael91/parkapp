@@ -28,6 +28,7 @@ type Board = { status: "loading" } | { status: "failed" } | { status: "loaded"; 
 // administrator, who can also correct each entry (US-10).
 export default function Stays({
   onSessionEnded,
+  canCorrect = false,
 }: {
   onSessionEnded: () => void;
   canCorrect?: boolean;
@@ -177,7 +178,7 @@ export default function Stays({
                   <th>Color</th>
                   <th>Marca</th>
                   <th>Ingreso</th>
-                  <th className="column-exit">Salida</th>
+                  <th className="column-exit">{canCorrect ? "Acciones" : "Salida"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -204,6 +205,15 @@ export default function Stays({
                       >
                         Registrar salida
                       </button>
+                      {canCorrect && (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          aria-label={`Corregir ingreso de ${stay.placa}`}
+                        >
+                          Corregir
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
