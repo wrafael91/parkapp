@@ -108,6 +108,32 @@ function valueOf(label: string) {
   return (screen.getByLabelText(label) as HTMLInputElement | HTMLSelectElement).value;
 }
 
+// US-10: the administrator corrects an entry from its row. The page gets the
+// role from App.tsx; the API checks it anyway (A-19).
+describe("button to correct an entry (US-10)", () => {
+  it("shows Corregir next to Registrar salida in each row when the user can correct", async () => {
+    stubFetch(...loaded({ estadias: [MOTORCYCLE, CAR] }));
+    render(<Stays onSessionEnded={vi.fn()} canCorrect />);
+    await screen.findByText("ABC12D");
+    expect(rows().map((cells) => cells[5])).toEqual([
+      "Registrar salidaCorregir",
+      "Registrar salidaCorregir",
+    ]);
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeTruthy();
+    screen.getByRole("button", { name: "Corregir ingreso de ABC12D" });
+    screen.getByRole("button", { name: "Corregir ingreso de ABC123" });
+  });
+
+  // Passes from the start, on purpose: an operator never had the button.
+  it("shows only Registrar salida when the user cannot correct", async () => {
+    stubFetch(...loaded({ estadias: [CAR] }));
+    renderStays();
+    await screen.findByText("ABC123");
+    expect(screen.getByRole("columnheader", { name: "Salida" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Corregir/ })).toBeNull();
+  });
+});
+
 describe("entry", () => {
   it.each([
     ["no brand as null", "", null],

@@ -150,26 +150,44 @@ describe("sign out", () => {
 });
 
 describe("stays screen", () => {
+  const ONE_CAR = {
+    estadias: [
+      {
+        id: 7,
+        placa: "ABC123",
+        tipoVehiculo: "CARRO",
+        color: "Rojo",
+        marca: "Mazda",
+        horaIngreso: "2026-11-11T02:22:00.000Z",
+      },
+    ],
+  };
+
   it("shows the vehicles inside once signed in", async () => {
-    const inside = {
-      estadias: [
-        {
-          id: 7,
-          placa: "ABC123",
-          tipoVehiculo: "CARRO",
-          color: "Rojo",
-          marca: "Mazda",
-          horaIngreso: "2026-11-11T02:22:00.000Z",
-        },
-      ],
-    };
     stubFetch(
       jsonResponse(200, ACTIVE_SESSION),
-      jsonResponse(200, inside),
+      jsonResponse(200, ONE_CAR),
       jsonResponse(200, NO_SPACES),
     );
     render(<App />);
     await screen.findByText("ABC123");
+  });
+
+  // US-10 and matrix 1.2: only an administrator corrects an entry. The API checks
+  // the role anyway (A-19). The operator's case passes from the start, on purpose.
+  it.each([
+    ["an administrator", "ADMINISTRADOR", 1],
+    ["an operator", "OPERADOR", 0],
+  ])("shows Corregir only to an administrator: %s", async (_case, rol, buttons) => {
+    stubFetch(
+      jsonResponse(200, { usuario: { ...ACTIVE_SESSION.usuario, rol } }),
+      jsonResponse(200, ONE_CAR),
+      jsonResponse(200, NO_SPACES),
+    );
+    render(<App />);
+    await screen.findByText("ABC123");
+    const correct = screen.queryAllByRole("button", { name: "Corregir ingreso de ABC123" });
+    expect(correct).toHaveLength(buttons);
   });
 
   // The session expires after 30 minutes without use (US-01).

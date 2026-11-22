@@ -1,4 +1,5 @@
-// Shared by the list (Stays.tsx), the exit (Exit.tsx) and the rates (Rates.tsx).
+// Shared by the list (Stays.tsx), the exit (Exit.tsx), the correction
+// (Correction.tsx) and the rates (Rates.tsx).
 
 // A stay as the API answers it (ADR 0008).
 export type Estadia = {
@@ -16,6 +17,21 @@ export const VEHICLE_TYPES = { CARRO: "Carro", MOTO: "Moto" };
 // spaces or hyphens, to find the plates that contain it (FR-11).
 export function normalizePlateSearch(text: string): string {
   return text.toUpperCase().replace(/[\s-]/g, "");
+}
+
+// The API's error codes for a stay that is not inside anymore (ADR 0008,
+// decision 6), with the page's message, or null for any other code. An
+// administrator may have corrected it, so the exit and the correction ask for
+// the list again and the replacement shows (FR-21).
+export function goneMessage(codigo: string | undefined): string | null {
+  switch (codigo) {
+    case "ESTADIA_NO_ACTIVA":
+      return "La estadía ya no está activa: puede que ya se haya registrado su salida o que ya se haya corregido.";
+    case "NO_ENCONTRADO":
+      return "La estadía no existe.";
+    default:
+      return null;
+  }
 }
 
 // A stay of the history, as GET /api/estadias?fecha= answers it (ADR 0008).

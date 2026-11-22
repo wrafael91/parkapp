@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { formatEntryTime, formatPesos, groupDigits, VEHICLE_TYPES, type Estadia } from "./stay.ts";
+import {
+  formatEntryTime,
+  formatPesos,
+  goneMessage,
+  groupDigits,
+  VEHICLE_TYPES,
+  type Estadia,
+} from "./stay.ts";
 
 // The receipt as POST /api/estadias/{id}/salida answers it, with the BR-14
 // fields (ADR 0008).
@@ -39,19 +46,6 @@ function formatReceiptTime(iso: string): string {
     RECEIPT_TIME.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
   );
   return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-// The page reads the API's error code (ADR 0008, decision 6). Both mean the
-// stay is not inside anymore, so it leaves the list.
-function goneMessage(codigo: string | undefined): string | null {
-  switch (codigo) {
-    case "ESTADIA_NO_ACTIVA":
-      return "La estadía ya no está activa: puede que ya se haya registrado su salida.";
-    case "NO_ENCONTRADO":
-      return "La estadía no existe.";
-    default:
-      return null;
-  }
 }
 
 // The exit of one stay (US-08, US-09): first the entry data, to check that it

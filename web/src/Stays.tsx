@@ -1,4 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from "react";
+import Correction, { type Reemplazo } from "./Correction.tsx";
 import Exit from "./Exit.tsx";
 import {
   formatEntryTime,
@@ -24,20 +25,33 @@ type Board = { status: "loading" } | { status: "failed" } | { status: "loaded"; 
 
 // The screen after signing in: the entry form and the vehicles inside (US-06,
 // US-07), and the exit of each one (US-08, US-09). A 401 means the session
-// ended, so the page goes back to sign in.
-export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }) {
+// ended, so the page goes back to sign in. canCorrect is true for an
+// administrator, who can also correct each entry (US-10).
+export default function Stays({
+  onSessionEnded,
+  canCorrect = false,
+}: {
+  onSessionEnded: () => void;
+  canCorrect?: boolean;
+}) {
   const [list, setList] = useState<List>({ status: "loading" });
   // The stay whose exit is being registered. While there is one, the exit takes
   // the place of the form and the list.
   const [leaving, setLeaving] = useState<Estadia | null>(null);
-  // Why the last exit could not be registered, when the stay was gone.
+  // Why the last exit or correction could not be made, when the stay was gone.
   const [exitError, setExitError] = useState<string | null>(null);
+  // The stay being corrected (US-10). Like the exit, the correction takes the
+  // place of the form and the list.
+  const [correcting, setCorrecting] = useState<Estadia | null>(null);
+  // The last correction that was saved.
+  const [corrected, setCorrected] = useState<string | null>(null);
   // The plate search, as typed (FR-11). It stays while an exit is registered.
   const [search, setSearch] = useState("");
   const [board, setBoard] = useState<Board>({ status: "loading" });
   // Changes when the list and the board must be asked for again: after an entry
   // was rejected because no spaces were left, another operator may have
-  // registered vehicles this screen does not show yet.
+  // registered vehicles this screen does not show yet; after an exit found the
+  // stay gone, an administrator may have corrected it.
   const [loads, setLoads] = useState(0);
 
   useEffect(() => {
@@ -84,6 +98,19 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
     );
   }
 
+  // The replacement takes the row of the voided stay, in the same place: it
+  // keeps the entry time, so the list stays in the API's order (BR-17).
+  function replaceStay(id: number, replacement: Reemplazo) {
+    setList((current) =>
+      current.status === "loaded"
+        ? {
+            status: "loaded",
+            stays: current.stays.map((stay) => (stay.id === id ? replacement : stay)),
+          }
+        : current,
+    );
+  }
+
   // The stay left, or it was no longer active, so it leaves the list.
   function removeStay(id: number) {
     setList((current) =>
@@ -99,6 +126,30 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
   const shown =
     list.status === "loaded" ? list.stays.filter((stay) => stay.placa.includes(searched)) : [];
 
+  if (correcting) {
+    return (
+      <Correction
+        stay={correcting}
+        onCorrected={(replacement) => {
+          replaceStay(correcting.id, replacement);
+          setCorrected(
+            `Ingreso corregido: ${replacement.placa}. La estadía anterior quedó anulada.`,
+          );
+          setCorrecting(null);
+        }}
+        onGone={(message) => {
+          removeStay(correcting.id);
+          setExitError(message);
+          setCorrecting(null);
+          // Another administrator may have corrected it: its replacement shows.
+          setLoads((count) => count + 1);
+        }}
+        onClose={() => setCorrecting(null)}
+        onSessionEnded={onSessionEnded}
+      />
+    );
+  }
+
   if (leaving) {
     return (
       <Exit
@@ -108,6 +159,8 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
           removeStay(leaving.id);
           setExitError(message);
           setLeaving(null);
+          // It may have been corrected meanwhile: the replacement shows (FR-21).
+          setLoads((count) => count + 1);
         }}
         onClose={() => setLeaving(null)}
         onSessionEnded={onSessionEnded}
@@ -128,6 +181,11 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
       <section className="card">
         <h2>Vehículos dentro</h2>
         {list.status === "loaded" && <CapacityBoard board={board} stays={list.stays} />}
+        {corrected && (
+          <p role="status" className="saved">
+            {corrected}
+          </p>
+        )}
         {exitError && (
           <p role="alert" className="alert">
             {exitError}
@@ -171,7 +229,7 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
                   <th>Color</th>
                   <th>Marca</th>
                   <th>Ingreso</th>
-                  <th className="column-exit">Salida</th>
+                  <th className="column-exit">{canCorrect ? "Acciones" : "Salida"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,11 +251,26 @@ export default function Stays({ onSessionEnded }: { onSessionEnded: () => void }
                         aria-label={`Registrar salida de ${stay.placa}`}
                         onClick={() => {
                           setExitError(null);
+                          setCorrected(null);
                           setLeaving(stay);
                         }}
                       >
                         Registrar salida
                       </button>
+                      {canCorrect && (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          aria-label={`Corregir ingreso de ${stay.placa}`}
+                          onClick={() => {
+                            setExitError(null);
+                            setCorrected(null);
+                            setCorrecting(stay);
+                          }}
+                        >
+                          Corregir
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
