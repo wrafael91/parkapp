@@ -311,27 +311,62 @@ describe("exit from a search", () => {
 });
 
 describe("rejected exit", () => {
+  // Criterion 11 of #116: an administrator may have corrected the stay while the
+  // operator checked it, so the list and the board are asked for again and the
+  // replacement shows in its place.
   it.each([
     [
       "the stay is not active",
       409,
       "ESTADIA_NO_ACTIVA",
-      "La estadía ya no está activa: puede que ya se haya registrado su salida.",
+      "La estadía ya no está activa: puede que ya se haya registrado su salida o que ya se haya corregido.",
     ],
     ["the stay does not exist", 404, "NO_ENCONTRADO", "La estadía no existe."],
-  ])("removes the vehicle and shows an alert when %s", async (_case, status, codigo, message) => {
-    const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
-    stubFetch(
+  ])(
+    "shows an alert and asks for the list and the board again when %s",
+    async (_case, status, codigo, message) => {
+      const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+      const replacement = { ...CAR, id: 12, placa: "ABC128" };
+      const fetchMock = stubFetch(
+        jsonResponse(200, BOTH),
+        jsonResponse(200, NO_SPACES),
+        jsonResponse(status, rejected),
+        jsonResponse(200, { estadias: [MOTORCYCLE, replacement] }),
+        jsonResponse(200, NO_SPACES),
+      );
+      const user = userEvent.setup();
+      renderStays();
+      await startExit(user, "ABC123");
+      await confirmExit(user);
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe(message);
+      await screen.findByText("ABC128");
+      expect(plates()).toEqual(["ABC12D", "ABC128"]);
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "/api/estadias?estado=ACTIVA",
+        "/api/cupos",
+        "/api/estadias/7/salida",
+        "/api/estadias?estado=ACTIVA",
+        "/api/cupos",
+      ]);
+    },
+  );
+
+  // Passes from the start, on purpose: the exit already took the row out.
+  it("takes the row out right away, before the list comes back", async () => {
+    const gone = { error: { codigo: "ESTADIA_NO_ACTIVA", mensaje: "Mensaje de la API." } };
+    const fetchMock = stubFetch(
       jsonResponse(200, BOTH),
       jsonResponse(200, NO_SPACES),
-      jsonResponse(status, rejected),
+      jsonResponse(409, gone),
     );
+    // The list is asked for again but has not come back yet.
+    fetchMock.mockReturnValueOnce(new Promise(() => {}));
     const user = userEvent.setup();
     renderStays();
     await startExit(user, "ABC123");
     await confirmExit(user);
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe(message);
+    await screen.findByRole("alert");
     expect(plates()).toEqual(["ABC12D"]);
   });
 
