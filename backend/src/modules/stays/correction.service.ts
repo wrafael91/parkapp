@@ -36,7 +36,28 @@ export async function correctStay(db: Db, input: CorrectStayInput): Promise<Corr
   }
   const color = input.color.trim();
   const brand = input.brand?.trim() || null;
-  const stay = await db.stay.findUniqueOrThrow({ where: { id: input.stayId } });
+  const stay = await db.stay.findUnique({ where: { id: input.stayId } });
+  if (stay === null) {
+    return { ok: false, reason: "notFound" };
+  }
+  if (stay.status !== "ACTIVE") {
+    return { ok: false, reason: "notActive" };
+  }
+  if (
+    plate === stay.plate &&
+    input.vehicleType === stay.vehicleType &&
+    color === stay.color &&
+    brand === stay.brand
+  ) {
+    return { ok: false, reason: "noChanges" };
+  }
+  // RI-02: the corrected plate cannot be active in another stay.
+  const active = await db.stay.findFirst({
+    where: { plate, status: "ACTIVE", id: { not: stay.id } },
+  });
+  if (active !== null) {
+    return { ok: false, reason: "plateActive" };
+  }
   await db.stay.update({
     where: { id: stay.id },
     data: {
