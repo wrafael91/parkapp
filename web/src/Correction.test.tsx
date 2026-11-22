@@ -215,3 +215,124 @@ describe("correction form (US-10)", () => {
     await formClosed();
   });
 });
+
+describe("rejected correction", () => {
+  it.each([
+    [
+      "the corrected plate is inside",
+      409,
+      "PLACA_ACTIVA",
+      "La placa corregida ya tiene una estadía activa.",
+    ],
+    [
+      "the new type had no rate at the entry",
+      409,
+      "SIN_TARIFA",
+      "No había tarifa para ese tipo de vehículo a la hora del ingreso.",
+    ],
+    ["nothing changes", 400, "SIN_CAMBIOS", "La corrección no cambia ningún dato."],
+    [
+      "the data is not valid",
+      400,
+      "ENTRADA_INVALIDA",
+      "Revisa los datos: la placa de carro es como ABC123 y la de moto como ABC12D, y el motivo es obligatorio.",
+    ],
+    [
+      "the user is not an administrator",
+      403,
+      "ACCESO_DENEGADO",
+      "Solo un administrador puede corregir un ingreso.",
+    ],
+  ])("shows an alert and keeps what was typed when %s", async (_case, status, codigo, message) => {
+    const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+    stubFetch(...loaded(THREE), jsonResponse(status, rejected));
+    const user = userEvent.setup();
+    renderStays();
+    await startCorrection(user, "ABC128");
+    await correctPlate(user, "abc-123");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+    expect(valueOf("Placa")).toBe("abc-123");
+    expect(valueOf("Motivo")).toBe("Placa mal digitada");
+    const save = screen.getByRole("button", { name: "Guardar corrección" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(plates()).toEqual(["ABC12D", "ABC128", "XYZ789"]);
+  });
+
+  // These pass from the start, on purpose: the form already showed this error.
+  it.each([
+    ["fails", jsonResponse(500, { error: { codigo: "ERROR_INTERNO", mensaje: "Error." } })],
+    ["cannot be reached", new TypeError("Failed to fetch")],
+  ])("shows a general error when the server %s", async (_case, answer) => {
+    stubFetch(...loaded(THREE), answer);
+    const user = userEvent.setup();
+    renderStays();
+    await startCorrection(user, "ABC128");
+    await correctPlate(user, "ABC123");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo guardar la corrección. Intenta de nuevo.");
+    expect(valueOf("Placa")).toBe("ABC123");
+  });
+
+  it("goes back to sign in when the session ended", async () => {
+    const ended = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
+    stubFetch(...loaded(THREE), jsonResponse(401, ended));
+    const onSessionEnded = vi.fn();
+    const user = userEvent.setup();
+    renderStays(onSessionEnded);
+    await startCorrection(user, "ABC128");
+    await correctPlate(user, "ABC123");
+    await waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+
+  // The vehicle left, or another administrator corrected it, while this one
+  // filled in the form: the list and the board are asked for again.
+  it.each([
+    [
+      "the stay is not active",
+      409,
+      "ESTADIA_NO_ACTIVA",
+      "La estadía ya no está activa: puede que ya se haya registrado su salida o que ya se haya corregido.",
+    ],
+    ["the stay does not exist", 404, "NO_ENCONTRADO", "La estadía no existe."],
+  ])(
+    "goes back to the list, shows why and asks for the list again when %s",
+    async (_case, status, codigo, message) => {
+      const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+      const fetchMock = stubFetch(
+        ...loaded(THREE),
+        jsonResponse(status, rejected),
+        ...loaded({ estadias: [MOTORCYCLE, REPLACEMENT, VAN] }),
+      );
+      const user = userEvent.setup();
+      renderStays();
+      await startCorrection(user, "ABC128");
+      await correctPlate(user, "ABC124");
+      await formClosed();
+      expect(screen.getByRole("alert").textContent).toBe(message);
+      await screen.findByText("ABC123");
+      expect(plates()).toEqual(["ABC12D", "ABC123", "XYZ789"]);
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "/api/estadias?estado=ACTIVA",
+        "/api/cupos",
+        "/api/estadias/7/correccion",
+        "/api/estadias?estado=ACTIVA",
+        "/api/cupos",
+      ]);
+    },
+  );
+
+  it("takes the row out right away, before the list comes back", async () => {
+    const gone = { error: { codigo: "ESTADIA_NO_ACTIVA", mensaje: "Mensaje de la API." } };
+    const fetchMock = stubFetch(...loaded(THREE), jsonResponse(409, gone));
+    // The list is asked for again but has not come back yet.
+    fetchMock.mockReturnValueOnce(new Promise(() => {}));
+    const user = userEvent.setup();
+    renderStays();
+    await startCorrection(user, "ABC128");
+    await correctPlate(user, "ABC124");
+    await formClosed();
+    expect(plates()).toEqual(["ABC12D", "XYZ789"]);
+  });
+});
