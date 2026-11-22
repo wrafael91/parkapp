@@ -225,3 +225,96 @@ describe("correctStay (FR-21, BR-17)", () => {
     });
   });
 });
+
+describe("correctStay rejects, and writes nothing", () => {
+  it("a plate without the format of the corrected type (FR-08, RI-01)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR128");
+
+      const asMotorcycle = await correct(db, setup, stayId, {
+        plate: "COR123",
+        vehicleType: "MOTORCYCLE",
+      });
+      const tooLong = await correct(db, setup, stayId, { plate: "COR1234" });
+
+      expect(asMotorcycle).toEqual({ ok: false, reason: "invalidPlate" });
+      expect(tooLong).toEqual({ ok: false, reason: "invalidPlate" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("ACTIVE");
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+
+  it("a stay that does not exist", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+
+      expect(await correct(db, setup, 2_147_483_647, { plate: "COR123" })).toEqual({
+        ok: false,
+        reason: "notFound",
+      });
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+
+  it("a stay that already left, or that was already voided or corrected (RI-04)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const closedId = await enter(db, setup, "COR128");
+      await db.stay.update({
+        where: { id: closedId },
+        data: { status: "CLOSED", exitTime: CORRECTED_AT, exitById: setup.operatorId },
+      });
+      const correctedId = await enter(db, setup, "COR127");
+      const first = await correct(db, setup, correctedId, { plate: "COR126" });
+      if (!first.ok) throw new Error(first.reason);
+
+      const closed = await correct(db, setup, closedId, { plate: "COR123" });
+      const again = await correct(db, setup, correctedId, { plate: "COR125" });
+      // The same correction twice, as when two administrators send it at once.
+      const twice = await correct(db, setup, correctedId, { plate: "COR126" });
+
+      expect(closed).toEqual({ ok: false, reason: "notActive" });
+      expect(again).toEqual({ ok: false, reason: "notActive" });
+      expect(twice).toEqual({ ok: false, reason: "notActive" });
+      expect(await db.stay.count({ where: { replacesId: correctedId } })).toBe(1);
+      expect(await db.stay.count({ where: { replacesId: closedId } })).toBe(0);
+      expect(await correctionEvents(db)).toBe(1);
+    });
+  });
+
+  it("a correction that changes nothing, once the plate is normalized", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR123", "CAR", "Kia");
+
+      const result = await correct(db, setup, stayId, {
+        plate: "cor-123",
+        color: " Azul ",
+        brand: "Kia",
+      });
+
+      expect(result).toEqual({ ok: false, reason: "noChanges" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("ACTIVE");
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+
+  it("a corrected plate that another stay has active (RI-02)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      await enter(db, setup, "COR123");
+      const stayId = await enter(db, setup, "COR128");
+
+      const result = await correct(db, setup, stayId, { plate: "COR123" });
+
+      expect(result).toEqual({ ok: false, reason: "plateActive" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("ACTIVE");
+      expect(await db.stay.count({ where: { plate: "COR123", status: "ACTIVE" } })).toBe(1);
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+});
