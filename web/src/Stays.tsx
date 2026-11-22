@@ -38,7 +38,7 @@ export default function Stays({
   // The stay whose exit is being registered. While there is one, the exit takes
   // the place of the form and the list.
   const [leaving, setLeaving] = useState<Estadia | null>(null);
-  // Why the last exit could not be registered, when the stay was gone.
+  // Why the last exit or correction could not be made, when the stay was gone.
   const [exitError, setExitError] = useState<string | null>(null);
   // The stay being corrected (US-10). Like the exit, the correction takes the
   // place of the form and the list.
@@ -137,7 +137,15 @@ export default function Stays({
           );
           setCorrecting(null);
         }}
+        onGone={(message) => {
+          removeStay(correcting.id);
+          setExitError(message);
+          setCorrecting(null);
+          // Another administrator may have corrected it: its replacement shows.
+          setLoads((count) => count + 1);
+        }}
         onClose={() => setCorrecting(null)}
+        onSessionEnded={onSessionEnded}
       />
     );
   }
