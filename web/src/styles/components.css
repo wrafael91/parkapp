@@ -216,6 +216,24 @@ form .button-primary {
   white-space: nowrap;
 }
 
+/* The administrator's row has "Registrar salida" and "Corregir" (US-10): side
+   by side, or one under the other on a phone, so the table does not get wider
+   than with one button. */
+.stays .button-secondary + .button-secondary {
+  margin-left: 0.5rem;
+}
+
+@media (max-width: 30rem) {
+  .stays .column-exit .button-secondary {
+    display: flex;
+    width: 100%;
+  }
+
+  .stays .button-secondary + .button-secondary {
+    margin: 0.4rem 0 0;
+  }
+}
+
 /* Alerts: a box that stands out, still announced by role="alert". */
 .alert {
   margin: 0 0 1rem;
@@ -254,6 +272,19 @@ form .alert,
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+/* The correction form (US-10): "Guardar corrección" and "Cancelar" share the
+   width, as in the exit, or each takes a line on a narrow phone. */
+.correction .actions {
+  margin-top: 0.5rem;
+}
+
+.correction .actions button {
+  flex: 1 1 12rem;
+  width: auto;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 /* The board of spaces above the list of vehicles inside (BR-19): one box per
