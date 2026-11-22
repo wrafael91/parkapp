@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110) |
-| Versión | 1.11 — 19 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116) |
+| Versión | 1.12 — 22 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -327,7 +327,14 @@ tenga constancia de lo que pagó.
 - **Dado** una estadía registrada como moto que en realidad es un carro, **cuando** corrijo el tipo, **entonces** el reemplazo usa la tarifa de carro vigente a la hora de ingreso original (BR-11) y, si la estadía estaba cerrada, recibe un comprobante nuevo con el cobro recalculado.
 - **Dado** una salida registrada a la estadía de un carro que sigue dentro, **cuando** la corrijo indicando la estadía del carro que salió, **entonces** la primera se reemplaza por una activa con su misma hora de ingreso, y la segunda queda cerrada con la hora de la salida anulada y su comprobante.
 - **Dado** que la placa corregida ya tiene una estadía activa, **cuando** intento corregir, **entonces** se rechaza con 409 y no cambia nada (RI-02).
+- **Dado** una estadía activa de moto que en realidad es un carro y que no quedan cupos de carros, **cuando** corrijo el tipo, **entonces** la corrección se hace, porque el vehículo ya está dentro (BR-19).
 - **Dado** que soy operador, **cuando** intento anular o corregir, **entonces** la API responde 403.
+
+La primera parte se entrega en el Sprint 3 (S3-10): corregir la placa, el tipo,
+el color o la marca de una estadía activa (FR-21 para estadías activas), con los
+criterios segundo, tercero, cuarto (sin el comprobante nuevo), sexto, séptimo y
+octavo. Quedan pendientes anular sin reemplazo (FR-15), corregir una estadía
+cerrada con un comprobante nuevo y corregir una salida (FR-22).
 
 #### US-11 Configurar la tarifa por minuto
 
@@ -503,3 +510,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.9 | 15 de noviembre de 2026 | El operador también consulta el historial: decisión 5 de la sección 1.3 (exportarlo sería solo del administrador; Ley 1581 de 2012), matriz de permisos, actor operador, FR-18 con el tipo de vehículo y US-13 para los dos actores, con los criterios de su primera parte (S3-06). FR-11 y US-07: búsqueda por la placa completa o por una parte de ella. S3-05 (#49) |
 | 1.10 | 16 de noviembre de 2026 | FR-04 y US-03: desactivar cierra las sesiones abiertas, y una cuenta de administrador no se desactiva desde la aplicación. US-02: correo repetido, y una nota sobre lo que llega con US-05 (cambio obligatorio, RI-16) y con el endurecimiento del inicio de sesión (contraseñas filtradas, NFR-02). S3-07 (#105) y S3-08 (#106) |
 | 1.11 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): FR-24 y US-17 (Should), dos filas nuevas en la matriz de permisos y actor administrador con los cupos. Cobertura con 19 reglas y 24 requisitos; origen de BR-19 en la sección 5.3. S3-09 (#110) |
+| 1.12 | 22 de noviembre de 2026 | US-10 en dos partes: la primera (S3-10) corrige una estadía activa, y quedan pendientes anular, corregir una estadía cerrada y corregir una salida. Criterio nuevo: la corrección del tipo no se rechaza por cupos (BR-19). S3-10 (#116) |

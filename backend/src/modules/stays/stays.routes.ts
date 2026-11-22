@@ -10,8 +10,10 @@ import type {
   VehicleType,
 } from "../../generated/prisma/client.js";
 import { sendError } from "../../middleware/errors.js";
+import { authorizeAdministrator } from "../accounts/authorize.js";
 import { readSessionToken } from "../accounts/session-cookie.js";
 import { authenticate } from "../accounts/session.service.js";
+import { correctStay } from "./correction.service.js";
 import { registerEntry } from "./entry.service.js";
 import { registerExit } from "./exit.service.js";
 
@@ -37,6 +39,17 @@ const entryBody = z.object({
   tipoVehiculo: z.enum(["CARRO", "MOTO"]),
   color: z.string().trim().min(1).max(30),
   marca: z.string().trim().max(40).nullish(),
+});
+
+// FR-21: the corrected data and the reason (BR-12). Strict, unlike the entry: a
+// correction that sends horaIngreso is trying to change a time the server
+// registered, and is rejected (BR-16).
+const correctionBody = z.strictObject({
+  placa: z.string().min(1).max(20),
+  tipoVehiculo: z.enum(["CARRO", "MOTO"]),
+  color: z.string().trim().min(1).max(30),
+  marca: z.string().trim().max(40).nullish(),
+  motivo: z.string().trim().min(1).max(200),
 });
 
 // The vehicles inside (FR-10): estado=ACTIVA and nothing else.
@@ -86,7 +99,7 @@ const HISTORY_LIMIT = 500;
 
 // A stay id: a positive integer, without leading zeros, that fits in the
 // INTEGER column. Anything else is a 400, not a database error.
-const exitParams = z.object({
+const stayParams = z.object({
   id: z
     .string()
     .regex(/^[1-9][0-9]{0,9}$/)
@@ -254,7 +267,7 @@ export function createStaysRouter(prisma: PrismaClient): Router {
   // which answers ERROR_INTERNO without details (NFR-07).
   router.post("/:id/salida", async (req, res) => {
     const token = readSessionToken(req.get("Cookie"));
-    const params = exitParams.safeParse(req.params);
+    const params = stayParams.safeParse(req.params);
     const now = new Date();
     const outcome = await prisma.$transaction(async (db) => {
       const user = token === null ? null : await authenticate(db, { token, now });
@@ -294,6 +307,73 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         return;
       case "registered":
         res.status(201).json(toComprobante(outcome.receipt));
+    }
+  });
+
+  // FR-21 for an active stay (BR-17): only an administrator corrects it. The
+  // stay is voided and replaced in one transaction; the answer is the replacement.
+  router.post("/:id/correccion", async (req, res) => {
+    const params = stayParams.safeParse(req.params);
+    const body = correctionBody.safeParse(req.body);
+    const now = new Date();
+    const outcome = await prisma.$transaction(async (db) => {
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
+      if (!params.success || !body.success) return { kind: "invalid" } as const;
+      const result = await correctStay(db, {
+        stayId: params.data.id,
+        plate: body.data.placa,
+        vehicleType: VEHICLE_TYPES[body.data.tipoVehiculo],
+        color: body.data.color,
+        brand: body.data.marca,
+        reason: body.data.motivo,
+        userId: access.user.id,
+        ip: req.ip ?? "",
+        now,
+      });
+      if (!result.ok) return { kind: result.reason } as const;
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: result.stayId } });
+      return { kind: "corrected", stay } as const;
+    });
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", "No tienes permiso para esta acción.");
+        return;
+      case "invalid":
+      case "invalidPlate":
+        sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
+        return;
+      case "noChanges":
+        sendError(res, 400, "SIN_CAMBIOS", "La corrección no cambia ningún dato.");
+        return;
+      case "notFound":
+        sendError(res, 404, "NO_ENCONTRADO", "La estadía no existe.");
+        return;
+      case "notActive":
+        sendError(
+          res,
+          409,
+          "ESTADIA_NO_ACTIVA",
+          "La estadía ya no está activa: puede que ya se haya registrado su salida o que ya se haya corregido.",
+        );
+        return;
+      case "plateActive":
+        sendError(res, 409, "PLACA_ACTIVA", "La placa corregida ya tiene una estadía activa.");
+        return;
+      case "noRate":
+        sendError(
+          res,
+          409,
+          "SIN_TARIFA",
+          "No había tarifa para ese tipo de vehículo a la hora del ingreso.",
+        );
+        return;
+      case "corrected":
+        res.status(201).json({ ...toEstadia(outcome.stay), reemplazaA: outcome.stay.replacesId });
     }
   });
 

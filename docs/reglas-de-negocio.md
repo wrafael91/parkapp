@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110) |
-| Versión | 1.10 — 19 de noviembre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110), S3-10 (#116) |
+| Versión | 1.11 — 22 de noviembre de 2026 |
 
 ## 1. Propósito
 
@@ -54,7 +54,7 @@ Valores máximos por minuto vigentes en 2026 (Decreto 652/2025, art. 200, Tabla 
 | BR-02 | Cada ingreso registra placa, tipo de vehículo y color (obligatorios), marca (opcional), fecha y hora de ingreso, y el operador que lo registró. | Decisión de diseño |
 | BR-03 | Una placa no puede tener más de una estadía activa al mismo tiempo. Si se intenta registrar el ingreso de una placa que ya está dentro, el sistema lo rechaza y alerta al operador (posible placa clonada). | Decisión de diseño |
 | BR-04 | Al registrar la salida, el sistema muestra los datos registrados al ingreso para que el operador verifique que coinciden con el vehículo que sale. | Decisión de diseño |
-| BR-19 | El administrador puede fijar los cupos de cada tipo de vehículo, de 0 a 10.000. Los cupos libres son los cupos menos los vehículos de ese tipo con estadía activa; las estadías cerradas y anuladas no cuentan. Si no quedan cupos libres de un tipo, el sistema rechaza el ingreso de ese tipo, alerta al operador y registra el intento en la bitácora con los datos del vehículo rechazado; los demás tipos siguen entrando, y la salida nunca se bloquea. Los cupos pueden quedar por debajo de los vehículos que ya están dentro: esos vehículos no se afectan, y los nuevos de ese tipo se rechazan hasta que haya cupo. Un tipo sin cupos configurados no tiene límite. Cada cambio crea una versión nueva. | `docs/diagnostico.md` (capacidad de los parqueaderos A y B); decisión del Product Owner (16 y 17 de noviembre de 2026); ver sección 6 |
+| BR-19 | El administrador puede fijar los cupos de cada tipo de vehículo, de 0 a 10.000. Los cupos libres son los cupos menos los vehículos de ese tipo con estadía activa; las estadías cerradas y anuladas no cuentan. Si no quedan cupos libres de un tipo, el sistema rechaza el ingreso de ese tipo, alerta al operador y registra el intento en la bitácora con los datos del vehículo rechazado; los demás tipos siguen entrando, y la salida nunca se bloquea. Los cupos pueden quedar por debajo de los vehículos que ya están dentro: esos vehículos no se afectan, y los nuevos de ese tipo se rechazan hasta que haya cupo. Un tipo sin cupos configurados no tiene límite. Corregir el tipo de un vehículo que ya está dentro (BR-17) no se rechaza por cupos. Cada cambio crea una versión nueva. | `docs/diagnostico.md` (capacidad de los parqueaderos A y B); decisión del Product Owner (16 y 17 de noviembre de 2026); ver sección 6 |
 
 ### 4.2 Liquidación del cobro
 
@@ -134,6 +134,16 @@ prueba en S3-09.
 | 18 | Hay 2 carros dentro y el administrador baja los cupos de carros a 1 | Los 2 carros siguen dentro y los nuevos se rechazan hasta que salgan los 2 | BR-19 |
 | 19 | El administrador fija 0 cupos de motos (como el parqueadero B, que no recibe motos) | Ninguna moto entra | BR-19 |
 | 20 | No hay cupos configurados para carros | Los carros entran sin límite | BR-19 |
+
+Correcciones de una estadía activa. Estos casos se convierten en pruebas en
+S3-10.
+
+| Caso | Situación | Resultado | Reglas |
+|---|---|---|---|
+| 21 | A las 8:02 se registró la placa ABC128 en lugar de ABC123; el administrador lo corrige a las 10:00 y el carro sale a las 10:30 | ABC128 queda anulada con el motivo, el usuario y la hora; el reemplazo ABC123 conserva el ingreso de las 8:02, y se cobran 148 minutos | BR-12, BR-16, BR-17 |
+| 22 | Se registró como moto un vehículo que era carro, y la tarifa de carro cambió después del ingreso | El reemplazo toma la tarifa de carro vigente a la hora del ingreso, no la de hoy | BR-11, BR-17 |
+| 23 | Igual que el caso 22, con los cupos de carros llenos | La corrección se hace, porque el carro ya estaba dentro; quedan más carros que cupos, y los nuevos se rechazan hasta que haya cupo | BR-17, BR-19 |
+| 24 | Mientras el administrador corrige una estadía, un operador registra su salida | Solo una de las dos se hace; la otra recibe un aviso de que la estadía ya no está activa | BR-12, BR-17 |
 
 ## 6. Supuestos e interpretaciones
 
@@ -256,3 +266,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.8 | 12 de noviembre de 2026 | Nombre visible del producto: RoloPark (ADR 0010). Los ejemplos de la sección 5 citan la tarea que los convirtió en pruebas, S2-09 (antes S1-08). (#71) |
 | 1.9 | 14 de noviembre de 2026 | BR-18: tope por periodo configurable, con los bloques contados desde el ingreso. BR-11 incluye el tope y BR-14 su descuento. Ejemplos 7 a 13 con el esquema del parqueadero B y supuesto de BR-18 en la sección 6. El tope diario sale de la sección 7 y entran los turnos fijos por reloj. Actores y glosario con el tope. (#14) |
 | 1.10 | 19 de noviembre de 2026 | BR-19: cupos por tipo de vehículo, calculados con las estadías activas, con el ingreso rechazado cuando no quedan. Ejemplos 14 a 20 y supuesto de BR-19 en la sección 6. Actores y glosario con los cupos. (#110) |
+| 1.11 | 22 de noviembre de 2026 | BR-19: corregir el tipo de un vehículo que ya está dentro no se rechaza por cupos. Ejemplos 21 a 24 de la corrección de una estadía activa (BR-17). (#116) |

@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110) |
-| Versión | 1.6 — 19 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116) |
+| Versión | 1.7 — 22 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -286,7 +286,19 @@ Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
    cupo a la vez, cada ingreso y cada cambio de cupos toma un candado de
    PostgreSQL por tipo de vehículo (`pg_advisory_xact_lock`) hasta el final de
    su transacción; las salidas y anulaciones no lo toman, porque solo liberan
-   cupos.
+   cupos. Una corrección toma el del tipo del reemplazo (decisión 9).
+9. **Una corrección anula la estadía y crea su reemplazo; no la edita** (BR-12,
+   BR-17). El reemplazo copia de la anulada la hora de ingreso, el usuario que
+   registró el ingreso, la gracia y el tope; si el tipo de vehículo cambia, toma
+   la tarifa de ese tipo vigente a la hora del ingreso (BR-11, RI-06). Quien
+   corrige queda en `anulada_por_id` de la anulada y en `ESTADIA_CORREGIDA`, que
+   apunta al reemplazo y, al corregir un ingreso, no lleva `detalle`: los datos
+   anteriores siguen en la estadía anulada. La corrección toma el candado del
+   tipo del reemplazo antes de leer la estadía, así que un ingreso de ese tipo
+   que espera cuenta el reemplazo y la misma placa no queda activa dos veces; y
+   anula solo si la estadía sigue activa, así que una salida y una corrección
+   simultáneas no se hacen las dos. No revisa cupos: el vehículo ya está dentro
+   (BR-19).
 
 ## 3. Modelo físico
 
@@ -604,3 +616,4 @@ mediciones y no por suposición.
 | 1.4 | 14 de noviembre de 2026 | Tope por periodo (BR-18): entidad y tabla `tope_periodo`, `estadia.tope_periodo_id`, `comprobante.descuento_tope`, acción `TOPE_PERIODO_CAMBIADO` (16 acciones) y decisión 7 de la sección 2.4. RI-06, RI-07, RI-08 y RI-12 incluyen el tope, y RI-20 es nueva. Sección 3.2 con la migración `add_period_cap` e índice nuevo en la sección 4.4. S3-04 (#14) |
 | 1.5 | 15 de noviembre de 2026 | La entidad Tope por periodo (1.1) y la acción `TOPE_PERIODO_CAMBIADO` (4.1) citan FR-23, el requisito de configurar el tope (`docs/requisitos.md` 1.8). S3-04 (#14) |
 | 1.6 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): entidad y tabla `cupo`, acciones `CUPO_CAMBIADO` e `INGRESO_RECHAZADO_SIN_CUPO` (18 acciones) y decisión 8 de la sección 2.4. RI-07 y RI-08 incluyen los cupos, y RI-21 es nueva. Sección 3.2 con la migración `add_capacity` e índice nuevo en la sección 4.4. S3-09 (#110) |
+| 1.7 | 22 de noviembre de 2026 | Corrección de una estadía activa (BR-17, FR-21): decisión 9 de la sección 2.4 (qué copia el reemplazo, la tarifa al cambiar de tipo, el candado y la anulación condicionada), y la decisión 8 menciona el candado de la corrección. S3-10 (#116) |
