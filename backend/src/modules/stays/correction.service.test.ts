@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { config } from "../../config.js";
 import { createPrismaClient } from "../../db.js";
 import type { Prisma, VehicleType } from "../../generated/prisma/client.js";
+import { lockVehicleType, setCapacity } from "../capacity/capacity.js";
 import { setPeriodCap } from "../rates/period-cap.js";
 import { setGracePeriod, setRate } from "../rates/rate-settings.js";
 import { closeCurrentVersions } from "../../versions.test-helper.js";
@@ -316,5 +317,234 @@ describe("correctStay rejects, and writes nothing", () => {
       expect(await db.stay.count({ where: { plate: "COR123", status: "ACTIVE" } })).toBe(1);
       expect(await correctionEvents(db)).toBe(0);
     });
+  });
+});
+
+describe("correctStay with another vehicle type (BR-11, BR-19)", () => {
+  it("takes the rate of the new type in force at the original entry, not the current one", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR12A", "MOTORCYCLE");
+      const carAtEntry = await db.rate.findFirstOrThrow({
+        where: { vehicleType: "CAR", validTo: null },
+      });
+      // The car rate changes after the entry and before the correction.
+      const changed = await setRate(db, {
+        vehicleType: "CAR",
+        valuePerMinute: 200,
+        createdById: setup.administratorId,
+        now: new Date("2026-11-09T14:00:00.000Z"),
+      });
+      if (!changed.ok) throw new Error("setup failed");
+
+      const result = await correct(db, setup, stayId, { plate: "COR123", vehicleType: "CAR" });
+
+      if (!result.ok) throw new Error(result.reason);
+      const replacement = await db.stay.findUniqueOrThrow({ where: { id: result.stayId } });
+      expect(replacement).toMatchObject({ vehicleType: "CAR", rateId: carAtEntry.id });
+      expect(replacement.rateId).not.toBe(changed.rateId);
+    });
+  });
+
+  it("rejects it when the new type had no rate at the original entry, and writes nothing", async () => {
+    await asApp(async (db) => {
+      // The motorcycle rate starts after the car entered.
+      const setup = await setUp(db, { motorcycleRateFrom: new Date("2026-11-09T14:00:00.000Z") });
+      const stayId = await enter(db, setup, "COR123");
+
+      const result = await correct(db, setup, stayId, {
+        plate: "COR12A",
+        vehicleType: "MOTORCYCLE",
+      });
+
+      expect(result).toEqual({ ok: false, reason: "noRate" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("ACTIVE");
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+
+  // Passes from the start, on purpose: the correction never counted spaces. The
+  // vehicle is already inside, and BR-19 does not affect the vehicles inside.
+  it("corrects it even when the new type has no spaces left", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const changedBy = { userId: setup.administratorId, ip: IP };
+      const full = await setCapacity(db, {
+        vehicleType: "CAR",
+        spaces: 1,
+        now: RATES_FROM,
+        changedBy,
+      });
+      if (!full.ok) throw new Error("setup failed");
+      await enter(db, setup, "COR123");
+      const stayId = await enter(db, setup, "COR12A", "MOTORCYCLE");
+
+      const result = await correct(db, setup, stayId, { plate: "COR124", vehicleType: "CAR" });
+
+      expect(result).toMatchObject({ ok: true });
+      expect(await db.stay.count({ where: { vehicleType: "CAR", status: "ACTIVE" } })).toBe(2);
+      expect(await db.stay.count({ where: { vehicleType: "MOTORCYCLE", status: "ACTIVE" } })).toBe(
+        0,
+      );
+    });
+  });
+
+  it("takes the lock of the replacement's type before reading the stay", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR12A", "MOTORCYCLE");
+      const calls: string[] = [];
+      const recorded = new Proxy(db, {
+        get(object, property) {
+          if (property === "stay") {
+            return new Proxy(object.stay, {
+              get(stay, method) {
+                const value = Reflect.get(stay, method);
+                if (typeof value !== "function") return value;
+                return (...args: unknown[]) => {
+                  calls.push(`stay.${String(method)}`);
+                  return value.apply(stay, args);
+                };
+              },
+            });
+          }
+          if (property === "$executeRaw") {
+            return (query: TemplateStringsArray, ...values: unknown[]) => {
+              calls.push(`lock ${values[1]}`);
+              return object.$executeRaw(query, ...values);
+            };
+          }
+          return Reflect.get(object, property);
+        },
+      });
+
+      const result = await correct(recorded, setup, stayId, {
+        plate: "COR123",
+        vehicleType: "CAR",
+      });
+
+      expect(result).toMatchObject({ ok: true });
+      // 1 is the key of cars (capacity.ts).
+      expect(calls.slice(0, 2)).toEqual(["lock 1", "stay.findUnique"]);
+    });
+  });
+
+  it("voids nothing if the stay left after it was read, as when an exit gets there first (RI-04)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR128");
+      // The exit closes the stay right before the correction voids it.
+      const exitFirst = new Proxy(db, {
+        get(object, property) {
+          if (property === "stay") {
+            return new Proxy(object.stay, {
+              get(stay, method) {
+                if (method === "updateMany") {
+                  return async (args: Prisma.StayUpdateManyArgs) => {
+                    await object.stay.update({
+                      where: { id: stayId },
+                      data: {
+                        status: "CLOSED",
+                        exitTime: CORRECTED_AT,
+                        exitById: setup.operatorId,
+                      },
+                    });
+                    return object.stay.updateMany(args);
+                  };
+                }
+                return Reflect.get(stay, method);
+              },
+            });
+          }
+          return Reflect.get(object, property);
+        },
+      });
+
+      const result = await correct(exitFirst, setup, stayId, { plate: "COR123" });
+
+      expect(result).toEqual({ ok: false, reason: "notActive" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay.status).toBe("CLOSED");
+      expect(await db.stay.count({ where: { replacesId: stayId } })).toBe(0);
+      expect(await correctionEvents(db)).toBe(0);
+    });
+  });
+});
+
+// A transaction on another connection holds the lock of a vehicle type until the
+// test lets it go. It writes nothing, so the correction waits only for the lock.
+async function holdLock(vehicleType: VehicleType) {
+  let release!: () => void;
+  let taken!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const lockTaken = new Promise<void>((resolve) => (taken = resolve));
+  const transaction = prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE parkapp_app");
+      await lockVehicleType(tx, vehicleType);
+      taken();
+      await held;
+    },
+    { timeout: 15_000 },
+  );
+  await Promise.race([lockTaken, transaction]);
+  return { release, transaction };
+}
+
+describe("correctStay at the same time as an entry of the new type (BR-19)", () => {
+  it("waits until the transaction holding the lock of the replacement's type ends", async () => {
+    const holder = await holdLock("CAR");
+    let corrected = false;
+    const correction = asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "COR12A", "MOTORCYCLE");
+      expect(
+        await correct(db, setup, stayId, { plate: "COR123", vehicleType: "CAR" }),
+      ).toMatchObject({ ok: true });
+      corrected = true;
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(corrected).toBe(false);
+    } finally {
+      holder.release();
+      await holder.transaction;
+      await correction;
+    }
+    expect(corrected).toBe(true);
+  });
+
+  it("does not wait for the lock of the type it leaves", async () => {
+    const holder = await holdLock("MOTORCYCLE");
+    let corrected = false;
+    try {
+      await asApp(async (db) => {
+        // The motorcycle entered before the lock was taken: only the correction runs now.
+        const setup = await setUp(db);
+        const stayId = await db.stay.create({
+          data: {
+            plate: "COR12A",
+            vehicleType: "MOTORCYCLE",
+            color: "Azul",
+            entryTime: ENTRY,
+            entryById: setup.operatorId,
+            rateId: (
+              await db.rate.findFirstOrThrow({
+                where: { vehicleType: "MOTORCYCLE", validTo: null },
+              })
+            ).id,
+            gracePeriodId: (await db.gracePeriod.findFirstOrThrow({ where: { validTo: null } })).id,
+          },
+        });
+        const result = await correct(db, setup, stayId.id, { plate: "COR123", vehicleType: "CAR" });
+        expect(result).toMatchObject({ ok: true });
+        corrected = true;
+      });
+    } finally {
+      holder.release();
+      await holder.transaction;
+    }
+    expect(corrected).toBe(true);
   });
 });
