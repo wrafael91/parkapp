@@ -50,7 +50,8 @@ export default function Stays({
   const [board, setBoard] = useState<Board>({ status: "loading" });
   // Changes when the list and the board must be asked for again: after an entry
   // was rejected because no spaces were left, another operator may have
-  // registered vehicles this screen does not show yet.
+  // registered vehicles this screen does not show yet; after an exit found the
+  // stay gone, an administrator may have corrected it.
   const [loads, setLoads] = useState(0);
 
   useEffect(() => {
@@ -150,6 +151,8 @@ export default function Stays({
           removeStay(leaving.id);
           setExitError(message);
           setLeaving(null);
+          // It may have been corrected meanwhile: the replacement shows (FR-21).
+          setLoads((count) => count + 1);
         }}
         onClose={() => setLeaving(null)}
         onSessionEnded={onSessionEnded}
