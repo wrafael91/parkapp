@@ -16,6 +16,7 @@ import { authenticate } from "../accounts/session.service.js";
 import { correctStay } from "./correction.service.js";
 import { registerEntry } from "./entry.service.js";
 import { registerExit } from "./exit.service.js";
+import { voidStay } from "./void.service.js";
 
 // The @map values of schema.prisma (ADR 0008, decision 4).
 const VEHICLE_TYPES = { CARRO: "CAR", MOTO: "MOTORCYCLE" } as const satisfies Record<
@@ -51,6 +52,16 @@ const correctionBody = z.strictObject({
   marca: z.string().trim().max(40).nullish(),
   motivo: z.string().trim().min(1).max(200),
 });
+
+// FR-15: the reason (BR-12) and the state History showed the administrator, so
+// the void stops if the stay changed since. Strict, like the correction: the
+// server sets the new state, the time and the user (BR-16).
+const voidBody = z.strictObject({
+  motivo: z.string().trim().min(1).max(200),
+  estado: z.enum(["ACTIVA", "CERRADA"]),
+});
+
+const SEEN_STATES = { ACTIVA: "ACTIVE", CERRADA: "CLOSED" } as const;
 
 // The vehicles inside (FR-10): estado=ACTIVA and nothing else.
 const activeQuery = z.strictObject({ estado: z.literal("ACTIVA") });
@@ -374,6 +385,61 @@ export function createStaysRouter(prisma: PrismaClient): Router {
         return;
       case "corrected":
         res.status(201).json({ ...toEstadia(outcome.stay), reemplazaA: outcome.stay.replacesId });
+    }
+  });
+
+  // FR-15 (BR-12): only an administrator voids an active or closed stay. The
+  // answer is the stay as History shows it, so its row changes in place.
+  router.post("/:id/anulacion", async (req, res) => {
+    const params = stayParams.safeParse(req.params);
+    const body = voidBody.safeParse(req.body);
+    const now = new Date();
+    const outcome = await prisma.$transaction(async (db) => {
+      const access = await authorizeAdministrator(db, req, now);
+      if (access.kind !== "allowed") return access;
+      if (!params.success || !body.success) return { kind: "invalid" } as const;
+      const result = await voidStay(db, {
+        stayId: params.data.id,
+        seen: SEEN_STATES[body.data.estado],
+        reason: body.data.motivo,
+        userId: access.user.id,
+        ip: req.ip ?? "",
+        now,
+      });
+      if (!result.ok) return { kind: result.reason } as const;
+      const stay = await db.stay.findUniqueOrThrow({
+        where: { id: params.data.id },
+        include: { receipt: true },
+      });
+      return { kind: "voided", stay } as const;
+    });
+
+    switch (outcome.kind) {
+      case "unauthenticated":
+        sendError(res, 401, "NO_AUTENTICADO", "No hay una sesión activa.");
+        return;
+      case "denied":
+        sendError(res, 403, "ACCESO_DENEGADO", "No tienes permiso para esta acción.");
+        return;
+      case "invalid":
+        sendError(res, 400, "ENTRADA_INVALIDA", "Los datos enviados no son válidos.");
+        return;
+      case "notFound":
+        sendError(res, 404, "NO_ENCONTRADO", "La estadía no existe.");
+        return;
+      case "alreadyVoided":
+        sendError(res, 409, "ESTADIA_YA_ANULADA", "La estadía ya estaba anulada.");
+        return;
+      case "changed":
+        sendError(
+          res,
+          409,
+          "ESTADIA_CAMBIADA",
+          "La estadía cambió mientras tanto: puede que se haya registrado su salida o que se haya corregido. Revísala y vuelve a intentarlo.",
+        );
+        return;
+      case "voided":
+        res.status(200).json(toHistorial(outcome.stay));
     }
   });
 
