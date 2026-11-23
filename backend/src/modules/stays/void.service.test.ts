@@ -224,3 +224,105 @@ describe("voidStay (FR-15, BR-12)", () => {
     });
   });
 });
+
+describe("voidStay rejects, and writes nothing", () => {
+  it("a stay that does not exist", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+
+      expect(await voidIt(db, setup, 2_147_483_647)).toEqual({ ok: false, reason: "notFound" });
+      expect(await voidEvents(db)).toBe(0);
+    });
+  });
+
+  it("a stay already voided, by a void or by a correction (RI-04)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const voidedId = await enter(db, setup, "ANU123");
+      const first = await voidIt(db, setup, voidedId);
+      if (!first.ok) throw new Error(first.reason);
+      const correctedId = await enter(db, setup, "ANU128");
+      await db.stay.update({
+        where: { id: correctedId },
+        data: {
+          status: "VOIDED",
+          voidedAt: ENTRY,
+          voidedById: setup.administratorId,
+          voidReason: "Placa mal digitada",
+        },
+      });
+
+      const again = await voidStay(db, {
+        stayId: voidedId,
+        seen: "ACTIVE",
+        reason: "Otra vez",
+        userId: setup.administratorId,
+        ip: IP,
+        now: EXIT,
+      });
+      const corrected = await voidIt(db, setup, correctedId);
+
+      expect(again).toEqual({ ok: false, reason: "alreadyVoided" });
+      expect(corrected).toEqual({ ok: false, reason: "alreadyVoided" });
+      const voided = await db.stay.findUniqueOrThrow({ where: { id: voidedId } });
+      expect(voided).toMatchObject({ voidedAt: VOIDED_AT, voidReason: "El vehículo no entró" });
+      expect(await voidEvents(db)).toBe(1);
+    });
+  });
+
+  it("a stay that is not as the administrator saw it, because an exit got there first (case 27)", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "ANU123");
+      // History showed it inside; the operator registered its exit before the
+      // administrator confirmed.
+      await leave(db, setup, stayId);
+
+      const result = await voidIt(db, setup, stayId, "ACTIVE");
+
+      // The administrator decided on an active stay, not on a closed one with a
+      // receipt: the void stops, and the screen shows the stay again.
+      expect(result).toEqual({ ok: false, reason: "changed" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay).toMatchObject({ status: "CLOSED", voidedAt: null, voidReason: null });
+      expect(await voidEvents(db)).toBe(0);
+    });
+  });
+
+  it("a stay that left while the void was running", async () => {
+    await asApp(async (db) => {
+      const setup = await setUp(db);
+      const stayId = await enter(db, setup, "ANU123");
+      // The exit closes the stay right after the void reads it as active.
+      const exitFirst = new Proxy(db, {
+        get(object, property) {
+          if (property === "stay") {
+            return new Proxy(object.stay, {
+              get(stay, method) {
+                if (method === "findUnique") {
+                  return async (args: Prisma.StayFindUniqueArgs) => {
+                    const read = await object.stay.findUnique(args);
+                    await object.stay.update({
+                      where: { id: stayId },
+                      data: { status: "CLOSED", exitTime: EXIT, exitById: setup.operatorId },
+                    });
+                    return read;
+                  };
+                }
+                return Reflect.get(stay, method);
+              },
+            });
+          }
+          return Reflect.get(object, property);
+        },
+      });
+
+      const result = await voidIt(exitFirst, setup, stayId);
+
+      expect(result).toEqual({ ok: false, reason: "changed" });
+      const stay = await db.stay.findUniqueOrThrow({ where: { id: stayId } });
+      expect(stay).toMatchObject({ status: "CLOSED", voidedAt: null, voidReason: null });
+      expect(await voidEvents(db)).toBe(0);
+    });
+  });
+});
