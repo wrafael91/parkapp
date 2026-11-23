@@ -27,6 +27,7 @@ type Result =
 // void an active or closed stay (FR-15).
 export default function History({
   onSessionEnded,
+  canVoid = false,
 }: {
   onSessionEnded: () => void;
   canVoid?: boolean;
@@ -153,6 +154,7 @@ export default function History({
                 <th>Salida</th>
                 <th>Estado</th>
                 <th>Comprobante</th>
+                {canVoid && <th className="column-exit">Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -181,6 +183,20 @@ export default function History({
                       ? "—"
                       : `N.º ${stay.comprobante.consecutivo} · ${formatPesos(stay.comprobante.total)}`}
                   </td>
+                  {canVoid && (
+                    <td className="column-exit">
+                      {/* RI-04: a voided stay does not change. */}
+                      {stay.estado !== "ANULADA" && (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          aria-label={`Anular estadía de ${stay.placa}`}
+                        >
+                          Anular
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
