@@ -8,6 +8,7 @@ import {
   VEHICLE_TYPES,
   type HistoryStay,
 } from "./stay.ts";
+import VoidStay from "./VoidStay.tsx";
 
 // GET /api/estadias with the history filters (ADR 0008), with a relative URL and
 // the default fetch, as in App.tsx (docs/modelo-amenazas.md, 7.3).
@@ -37,6 +38,11 @@ export default function History({
   const [placa, setPlaca] = useState("");
   const [tipoVehiculo, setTipoVehiculo] = useState("");
   const [result, setResult] = useState<Result>({ status: "loading" });
+  // The stay being voided (FR-15). The panel takes the place of the history,
+  // which keeps its filters and its results for when the panel closes.
+  const [voiding, setVoiding] = useState<HistoryStay | null>(null);
+  // The last void that was made.
+  const [voided, setVoided] = useState<string | null>(null);
 
   async function search(filters: Filters, signal?: AbortSignal) {
     const plate = normalizePlateSearch(filters.placa);
@@ -76,9 +82,36 @@ export default function History({
     // Only once: later searches come from the form.
   }, []);
 
+  // The voided stay takes its row, in the same place.
+  function replaceStay(stay: HistoryStay) {
+    setResult((current) =>
+      current.status === "loaded"
+        ? { ...current, stays: current.stays.map((row) => (row.id === stay.id ? stay : row)) }
+        : current,
+    );
+  }
+
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     search({ fecha, placa, tipoVehiculo });
+  }
+
+  if (voiding) {
+    return (
+      <VoidStay
+        stay={voiding}
+        onVoided={(stay) => {
+          replaceStay(stay);
+          const receipt =
+            voiding.comprobante === null
+              ? ""
+              : ` Su comprobante N.º ${voiding.comprobante.consecutivo} también quedó anulado.`;
+          setVoided(`Estadía anulada: ${stay.placa}.${receipt}`);
+          setVoiding(null);
+        }}
+        onClose={() => setVoiding(null)}
+      />
+    );
   }
 
   return (
@@ -120,6 +153,11 @@ export default function History({
           Buscar
         </button>
       </form>
+      {voided && (
+        <p role="status" className="saved">
+          {voided}
+        </p>
+      )}
       {result.status === "loading" && <p className="muted">Cargando…</p>}
       {result.status === "failed" && (
         <p role="alert" className="alert">
@@ -191,6 +229,10 @@ export default function History({
                           type="button"
                           className="button-secondary"
                           aria-label={`Anular estadía de ${stay.placa}`}
+                          onClick={() => {
+                            setVoided(null);
+                            setVoiding(stay);
+                          }}
                         >
                           Anular
                         </button>
