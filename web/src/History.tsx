@@ -8,6 +8,7 @@ import {
   VEHICLE_TYPES,
   type HistoryStay,
 } from "./stay.ts";
+import VoidStay from "./VoidStay.tsx";
 
 // GET /api/estadias with the history filters (ADR 0008), with a relative URL and
 // the default fetch, as in App.tsx (docs/modelo-amenazas.md, 7.3).
@@ -22,14 +23,30 @@ type Result =
   | { status: "loaded"; stays: HistoryStay[]; hayMas: boolean };
 
 // The history (US-13, first part): the stays of a day in Bogotá, part of a plate
-// or both, for operators and administrators (requirements 1.3, decision 5). It
-// only reads: nothing here changes or exports a stay.
-export default function History({ onSessionEnded }: { onSessionEnded: () => void }) {
+// or both, for operators and administrators (requirements 1.3, decision 5).
+// Nothing here exports a stay. canVoid is true for an administrator, who can also
+// void an active or closed stay (FR-15).
+export default function History({
+  onSessionEnded,
+  canVoid = false,
+}: {
+  onSessionEnded: () => void;
+  canVoid?: boolean;
+}) {
   // Today in Bogotá, whatever the time zone of the computer.
   const [fecha, setFecha] = useState(() => bogotaToday(new Date()));
   const [placa, setPlaca] = useState("");
   const [tipoVehiculo, setTipoVehiculo] = useState("");
   const [result, setResult] = useState<Result>({ status: "loading" });
+  // The stay being voided (FR-15). The panel takes the place of the history,
+  // which keeps its filters and its results for when the panel closes.
+  const [voiding, setVoiding] = useState<HistoryStay | null>(null);
+  // The last void that was made, or why it could not be made.
+  const [voided, setVoided] = useState<string | null>(null);
+  const [voidGone, setVoidGone] = useState<string | null>(null);
+  // The filters of the last search, to ask for it again after a void found the
+  // stay changed.
+  const [searched, setSearched] = useState<Filters | null>(null);
 
   async function search(filters: Filters, signal?: AbortSignal) {
     const plate = normalizePlateSearch(filters.placa);
@@ -39,6 +56,7 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
       return;
     }
     const query = new URLSearchParams();
+    setSearched(filters);
     if (filters.fecha !== "") query.set("fecha", filters.fecha);
     if (plate !== "") query.set("placa", plate);
     if (filters.tipoVehiculo !== "") query.set("tipoVehiculo", filters.tipoVehiculo);
@@ -69,9 +87,42 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
     // Only once: later searches come from the form.
   }, []);
 
+  // The voided stay takes its row, in the same place.
+  function replaceStay(stay: HistoryStay) {
+    setResult((current) =>
+      current.status === "loaded"
+        ? { ...current, stays: current.stays.map((row) => (row.id === stay.id ? stay : row)) }
+        : current,
+    );
+  }
+
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     search({ fecha, placa, tipoVehiculo });
+  }
+
+  if (voiding) {
+    return (
+      <VoidStay
+        stay={voiding}
+        onVoided={(stay) => {
+          replaceStay(stay);
+          const receipt =
+            voiding.comprobante === null
+              ? ""
+              : ` Su comprobante N.º ${voiding.comprobante.consecutivo} también quedó anulado.`;
+          setVoided(`Estadía anulada: ${stay.placa}.${receipt}`);
+          setVoiding(null);
+        }}
+        onGone={(message) => {
+          setVoidGone(message);
+          setVoiding(null);
+          if (searched !== null) search(searched);
+        }}
+        onClose={() => setVoiding(null)}
+        onSessionEnded={onSessionEnded}
+      />
+    );
   }
 
   return (
@@ -113,6 +164,16 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
           Buscar
         </button>
       </form>
+      {voided && (
+        <p role="status" className="saved">
+          {voided}
+        </p>
+      )}
+      {voidGone && (
+        <p role="alert" className="alert">
+          {voidGone}
+        </p>
+      )}
       {result.status === "loading" && <p className="muted">Cargando…</p>}
       {result.status === "failed" && (
         <p role="alert" className="alert">
@@ -147,6 +208,7 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
                 <th>Salida</th>
                 <th>Estado</th>
                 <th>Comprobante</th>
+                {canVoid && <th className="column-exit">Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -175,6 +237,25 @@ export default function History({ onSessionEnded }: { onSessionEnded: () => void
                       ? "—"
                       : `N.º ${stay.comprobante.consecutivo} · ${formatPesos(stay.comprobante.total)}`}
                   </td>
+                  {canVoid && (
+                    <td className="column-exit">
+                      {/* RI-04: a voided stay does not change. */}
+                      {stay.estado !== "ANULADA" && (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          aria-label={`Anular estadía de ${stay.placa}`}
+                          onClick={() => {
+                            setVoided(null);
+                            setVoidGone(null);
+                            setVoiding(stay);
+                          }}
+                        >
+                          Anular
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -147,6 +147,32 @@ describe("history of a day", () => {
   });
 });
 
+// FR-15: the administrator voids an active or closed stay from its row. The
+// page gets the role from App.tsx; the API checks it anyway (A-19).
+describe("button to void a stay (FR-15)", () => {
+  it("shows Anular in the rows inside and closed when the user can void", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    stubFetch(jsonResponse(200, { estadias: [CLOSED, VOIDED, INSIDE], hayMas: false }));
+    render(<History onSessionEnded={vi.fn()} canVoid />);
+    await screen.findByText("TST130");
+    expect(rows().map((cells) => cells[8])).toEqual(["Anular", "", "Anular"]);
+    expect(screen.getByRole("columnheader", { name: "Acciones" })).toBeTruthy();
+    screen.getByRole("button", { name: "Anular estadía de TST130" });
+    screen.getByRole("button", { name: "Anular estadía de TST12A" });
+    expect(screen.queryByRole("button", { name: "Anular estadía de TST131" })).toBeNull();
+  });
+
+  // Passes from the start, on purpose: an operator never had the column.
+  it("has no column of buttons when the user cannot void", async () => {
+    setNow("2026-11-16T03:30:00.000Z");
+    stubFetch(jsonResponse(200, { estadias: [CLOSED], hayMas: false }));
+    renderHistory();
+    await screen.findByText("TST130");
+    expect(rows()[0]).toHaveLength(8);
+    expect(screen.queryByRole("button", { name: /^Anular/ })).toBeNull();
+  });
+});
+
 describe("history filters", () => {
   it("searches with the day, the type and the plate, normalized", async () => {
     setNow("2026-11-16T03:30:00.000Z");

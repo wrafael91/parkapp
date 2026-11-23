@@ -280,6 +280,23 @@ form .alert,
   margin-top: 0.5rem;
 }
 
+/* History's messages sit between the filters and the table (FR-15). */
+.history-filters + .saved,
+.history-filters + .alert {
+  margin-bottom: 1rem;
+}
+
+/* The receipt that a void takes with it: it stands out before the reason is
+   written, without being an error. */
+.void-receipt {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-background);
+  font-weight: 600;
+}
+
 .correction .actions button {
   flex: 1 1 12rem;
   width: auto;
