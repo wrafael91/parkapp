@@ -21,9 +21,21 @@ export type VoidStayResult =
 // exit and its receipt, which is void because its stay is (data model, decision
 // 5). The server sets the time and the user (BR-16).
 export async function voidStay(db: Db, input: VoidStayInput): Promise<VoidStayResult> {
-  const stay = await db.stay.findUniqueOrThrow({ where: { id: input.stayId } });
-  await db.stay.update({
-    where: { id: stay.id },
+  const stay = await db.stay.findUnique({ where: { id: input.stayId } });
+  if (stay === null) {
+    return { ok: false, reason: "notFound" };
+  }
+  // RI-04: a voided stay does not change, whether a void or a correction voided it.
+  if (stay.status === "VOIDED") {
+    return { ok: false, reason: "alreadyVoided" };
+  }
+  // The administrator decided on the stay as History showed it. If an exit or a
+  // correction got there first, before or during this request, nothing is
+  // voided: a stay seen active is never voided with a receipt nobody saw. No lock
+  // per vehicle type: voiding only frees a space, like the exit (data model,
+  // decision 10).
+  const voided = await db.stay.updateMany({
+    where: { id: stay.id, status: input.seen },
     data: {
       status: "VOIDED",
       voidedAt: input.now,
@@ -31,6 +43,9 @@ export async function voidStay(db: Db, input: VoidStayInput): Promise<VoidStayRe
       voidReason: input.reason,
     },
   });
+  if (voided.count === 0) {
+    return { ok: false, reason: "changed" };
+  }
   // The reason stays in the stay, so the event has no detail (data model, 4.1).
   await db.auditEvent.create({
     data: {
