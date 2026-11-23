@@ -186,7 +186,9 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
         {section === "operation" && (
           <Stays onSessionEnded={onSignedOut} canCorrect={user.rol === "ADMINISTRADOR"} />
         )}
-        {section === "history" && <History onSessionEnded={onSignedOut} />}
+        {section === "history" && (
+          <History onSessionEnded={onSignedOut} canVoid={user.rol === "ADMINISTRADOR"} />
+        )}
         {section === "rates" && <Rates onSessionEnded={onSignedOut} />}
         {section === "accounts" && <Accounts onSessionEnded={onSignedOut} />}
       </main>

@@ -22,9 +22,15 @@ type Result =
   | { status: "loaded"; stays: HistoryStay[]; hayMas: boolean };
 
 // The history (US-13, first part): the stays of a day in Bogotá, part of a plate
-// or both, for operators and administrators (requirements 1.3, decision 5). It
-// only reads: nothing here changes or exports a stay.
-export default function History({ onSessionEnded }: { onSessionEnded: () => void }) {
+// or both, for operators and administrators (requirements 1.3, decision 5).
+// Nothing here exports a stay. canVoid is true for an administrator, who can also
+// void an active or closed stay (FR-15).
+export default function History({
+  onSessionEnded,
+}: {
+  onSessionEnded: () => void;
+  canVoid?: boolean;
+}) {
   // Today in Bogotá, whatever the time zone of the computer.
   const [fecha, setFecha] = useState(() => bogotaToday(new Date()));
   const [placa, setPlaca] = useState("");

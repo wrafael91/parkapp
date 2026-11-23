@@ -289,6 +289,40 @@ describe("sections (matrix 1.2)", () => {
     expect(screen.queryByRole("heading", { name: "Registrar ingreso" })).toBeNull();
   });
 
+  // FR-15 and matrix 1.2: only an administrator voids a stay, from History. The
+  // API checks the role anyway (A-19). The operator's case passes from the start,
+  // on purpose.
+  it.each([
+    ["an administrator", "ADMINISTRADOR", 1],
+    ["an operator", "OPERADOR", 0],
+  ])("shows Anular in History only to an administrator: %s", async (_case, rol, buttons) => {
+    const closed = {
+      id: 30,
+      placa: "TST130",
+      tipoVehiculo: "CARRO",
+      color: "Azul",
+      marca: null,
+      horaIngreso: "2026-11-16T00:42:22.000Z",
+      horaSalida: "2026-11-16T00:47:26.000Z",
+      estado: "CERRADA",
+      comprobante: { consecutivo: 8, total: 1350 },
+    };
+    stubFetch(
+      jsonResponse(200, { usuario: { ...ACTIVE_SESSION.usuario, rol } }),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
+      jsonResponse(200, { estadias: [closed], hayMas: false }),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    const sections = await screen.findByRole("navigation", { name: "Secciones" });
+    await screen.findByText("No hay vehículos dentro.");
+    await user.click(within(sections).getByRole("button", { name: "Historial" }));
+    await screen.findByText("TST130");
+    const voidButtons = screen.queryAllByRole("button", { name: "Anular estadía de TST130" });
+    expect(voidButtons).toHaveLength(buttons);
+  });
+
   // Requirements 1.3, decision 5: the operator also reads the history.
   it("lets an operator switch between Operación and Historial, without Tarifas", async () => {
     stubFetch(
