@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116) |
-| Versión | 1.7 — 22 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
+| Versión | 1.8 — 22 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -299,6 +299,16 @@ Cada regla se implementa en PostgreSQL y se verifica con pruebas automatizadas
    anula solo si la estadía sigue activa, así que una salida y una corrección
    simultáneas no se hacen las dos. No revisa cupos: el vehículo ya está dentro
    (BR-19).
+10. **Una anulación no tiene reemplazo y solo libera cupos** (BR-12, FR-15).
+    La estadía pasa a anulada con quién, cuándo y el motivo, y conserva todo lo
+    demás: si estaba cerrada, su hora de salida y su comprobante, que queda
+    anulado porque su estadía lo está (decisión 5). `ESTADIA_ANULADA` apunta a
+    la estadía y no lleva `detalle`: el motivo queda en ella. La página envía
+    el estado que le mostró al administrador (activa o cerrada), y la anulación
+    se hace solo si la estadía sigue así, también al escribirla: una salida o
+    una corrección que llegó antes, o durante la petición, la detiene, y el
+    administrador no anula un comprobante que no vio. No toma el candado por
+    tipo de vehículo, como la salida (decisión 8).
 
 ## 3. Modelo físico
 
@@ -617,3 +627,4 @@ mediciones y no por suposición.
 | 1.5 | 15 de noviembre de 2026 | La entidad Tope por periodo (1.1) y la acción `TOPE_PERIODO_CAMBIADO` (4.1) citan FR-23, el requisito de configurar el tope (`docs/requisitos.md` 1.8). S3-04 (#14) |
 | 1.6 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): entidad y tabla `cupo`, acciones `CUPO_CAMBIADO` e `INGRESO_RECHAZADO_SIN_CUPO` (18 acciones) y decisión 8 de la sección 2.4. RI-07 y RI-08 incluyen los cupos, y RI-21 es nueva. Sección 3.2 con la migración `add_capacity` e índice nuevo en la sección 4.4. S3-09 (#110) |
 | 1.7 | 22 de noviembre de 2026 | Corrección de una estadía activa (BR-17, FR-21): decisión 9 de la sección 2.4 (qué copia el reemplazo, la tarifa al cambiar de tipo, el candado y la anulación condicionada), y la decisión 8 menciona el candado de la corrección. S3-10 (#116) |
+| 1.8 | 22 de noviembre de 2026 | Anulación sin reemplazo (BR-12, FR-15): decisión 10 de la sección 2.4 (qué conserva la estadía anulada, su comprobante, el evento sin `detalle` y la anulación condicionada al estado que vio el administrador). S3-11 (#121) |

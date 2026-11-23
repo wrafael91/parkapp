@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116) |
-| Versión | 1.12 — 22 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
+| Versión | 1.13 — 22 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -333,8 +333,10 @@ tenga constancia de lo que pagó.
 La primera parte se entrega en el Sprint 3 (S3-10): corregir la placa, el tipo,
 el color o la marca de una estadía activa (FR-21 para estadías activas), con los
 criterios segundo, tercero, cuarto (sin el comprobante nuevo), sexto, séptimo y
-octavo. Quedan pendientes anular sin reemplazo (FR-15), corregir una estadía
-cerrada con un comprobante nuevo y corregir una salida (FR-22).
+octavo. La segunda parte (S3-11) anula sin reemplazo una estadía activa o
+cerrada, con su comprobante, desde el historial (FR-15), con los criterios
+primero, segundo y último. Quedan pendientes corregir una estadía cerrada con
+un comprobante nuevo y corregir una salida (FR-22).
 
 #### US-11 Configurar la tarifa por minuto
 
@@ -511,3 +513,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.10 | 16 de noviembre de 2026 | FR-04 y US-03: desactivar cierra las sesiones abiertas, y una cuenta de administrador no se desactiva desde la aplicación. US-02: correo repetido, y una nota sobre lo que llega con US-05 (cambio obligatorio, RI-16) y con el endurecimiento del inicio de sesión (contraseñas filtradas, NFR-02). S3-07 (#105) y S3-08 (#106) |
 | 1.11 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): FR-24 y US-17 (Should), dos filas nuevas en la matriz de permisos y actor administrador con los cupos. Cobertura con 19 reglas y 24 requisitos; origen de BR-19 en la sección 5.3. S3-09 (#110) |
 | 1.12 | 22 de noviembre de 2026 | US-10 en dos partes: la primera (S3-10) corrige una estadía activa, y quedan pendientes anular, corregir una estadía cerrada y corregir una salida. Criterio nuevo: la corrección del tipo no se rechaza por cupos (BR-19). S3-10 (#116) |
+| 1.13 | 22 de noviembre de 2026 | US-10: la segunda parte (S3-11) anula una estadía activa o cerrada sin reemplazo (FR-15). Quedan pendientes corregir una estadía cerrada y corregir una salida. S3-11 (#121) |

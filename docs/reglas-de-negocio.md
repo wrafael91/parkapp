@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110), S3-10 (#116) |
-| Versión | 1.11 — 22 de noviembre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
+| Versión | 1.12 — 22 de noviembre de 2026 |
 
 ## 1. Propósito
 
@@ -145,6 +145,14 @@ S3-10.
 | 23 | Igual que el caso 22, con los cupos de carros llenos | La corrección se hace, porque el carro ya estaba dentro; quedan más carros que cupos, y los nuevos se rechazan hasta que haya cupo | BR-17, BR-19 |
 | 24 | Mientras el administrador corrige una estadía, un operador registra su salida | Solo una de las dos se hace; la otra recibe un aviso de que la estadía ya no está activa | BR-12, BR-17 |
 
+Anulaciones sin reemplazo. Estos casos se convierten en pruebas en S3-11.
+
+| Caso | Situación | Resultado | Reglas |
+|---|---|---|---|
+| 25 | Se registró el ingreso de un carro que no entró al parqueadero | El administrador lo anula con el motivo: queda anulado con su usuario y la hora, se conserva en el historial y su cupo queda libre | BR-12, BR-19 |
+| 26 | Una estadía cerrada con el comprobante N.º 7 por $1.000 se le cobró al vehículo equivocado | El administrador la anula: la estadía y su comprobante quedan anulados, se conservan, y el comprobante deja de contar en el recaudo | BR-12, BR-14 |
+| 27 | Mientras el administrador anula una estadía activa, un operador registra su salida | Solo una de las dos se hace; si la salida llegó primero, la anulación se rechaza y el administrador ve el comprobante antes de volver a decidir | BR-12 |
+
 ## 6. Supuestos e interpretaciones
 
 - **BR-06:** la norma no regula los segundos. Se cobra solo el minuto completo por 
@@ -267,3 +275,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.9 | 14 de noviembre de 2026 | BR-18: tope por periodo configurable, con los bloques contados desde el ingreso. BR-11 incluye el tope y BR-14 su descuento. Ejemplos 7 a 13 con el esquema del parqueadero B y supuesto de BR-18 en la sección 6. El tope diario sale de la sección 7 y entran los turnos fijos por reloj. Actores y glosario con el tope. (#14) |
 | 1.10 | 19 de noviembre de 2026 | BR-19: cupos por tipo de vehículo, calculados con las estadías activas, con el ingreso rechazado cuando no quedan. Ejemplos 14 a 20 y supuesto de BR-19 en la sección 6. Actores y glosario con los cupos. (#110) |
 | 1.11 | 22 de noviembre de 2026 | BR-19: corregir el tipo de un vehículo que ya está dentro no se rechaza por cupos. Ejemplos 21 a 24 de la corrección de una estadía activa (BR-17). (#116) |
+| 1.12 | 22 de noviembre de 2026 | Ejemplos 25 a 27 de la anulación sin reemplazo de una estadía activa o cerrada (BR-12). (#121) |
