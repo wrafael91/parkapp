@@ -6,17 +6,50 @@ function receiptText(receipt: { consecutivo: number; total: number }): string {
   return `N.º ${receipt.consecutivo} · ${formatPesos(receipt.total)}`;
 }
 
+// The API's error codes for a stay that is not as the administrator saw it
+// anymore, with the page's message (ADR 0008, decision 6): the history is asked
+// for again, so the administrator sees it as it is now before deciding again.
+function goneMessage(codigo: string | undefined): string | null {
+  switch (codigo) {
+    case "ESTADIA_CAMBIADA":
+      return "La estadía cambió mientras tanto: puede que se haya registrado su salida o que se haya corregido. Revísala y vuelve a intentarlo.";
+    case "ESTADIA_YA_ANULADA":
+      return "La estadía ya estaba anulada.";
+    case "NO_ENCONTRADO":
+      return "La estadía no existe.";
+    default:
+      return null;
+  }
+}
+
+// The page writes its own message for the other errors. The panel keeps the
+// reason.
+function voidError(codigo: string | undefined): string {
+  switch (codigo) {
+    case "ENTRADA_INVALIDA":
+      return "Escribe el motivo de la anulación, de hasta 200 caracteres.";
+    case "ACCESO_DENEGADO":
+      return "Solo un administrador puede anular una estadía.";
+    default:
+      return "No se pudo anular la estadía. Intenta de nuevo.";
+  }
+}
+
 // The void of an active or closed stay (FR-15, US-10). The administrator writes
 // the reason; the server sets the state, the time and the user (BR-16), and keeps
 // everything (BR-12). A closed stay keeps its receipt, which is void with it.
 export default function VoidStay({
   stay,
   onVoided,
+  onGone,
   onClose,
+  onSessionEnded,
 }: {
   stay: HistoryStay;
   onVoided: (voided: HistoryStay) => void;
+  onGone: (message: string) => void;
   onClose: () => void;
+  onSessionEnded: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -39,8 +72,21 @@ export default function VoidStay({
       onVoided(await response.json());
       return;
     }
-    // The reason stays in the form, so it can be sent again.
-    setError("No se pudo anular la estadía. Intenta de nuevo.");
+    if (response?.status === 401) {
+      onSessionEnded();
+      return;
+    }
+    const body: { error?: { codigo?: string } } | null = response
+      ? await response.json().catch(() => null)
+      : null;
+    const codigo = body?.error?.codigo;
+    const gone = goneMessage(codigo);
+    if (gone) {
+      onGone(gone);
+      return;
+    }
+    // The reason stays in the form, so it can be fixed and sent again.
+    setError(voidError(codigo));
   }
 
   return (

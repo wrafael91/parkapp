@@ -41,8 +41,12 @@ export default function History({
   // The stay being voided (FR-15). The panel takes the place of the history,
   // which keeps its filters and its results for when the panel closes.
   const [voiding, setVoiding] = useState<HistoryStay | null>(null);
-  // The last void that was made.
+  // The last void that was made, or why it could not be made.
   const [voided, setVoided] = useState<string | null>(null);
+  const [voidGone, setVoidGone] = useState<string | null>(null);
+  // The filters of the last search, to ask for it again after a void found the
+  // stay changed.
+  const [searched, setSearched] = useState<Filters | null>(null);
 
   async function search(filters: Filters, signal?: AbortSignal) {
     const plate = normalizePlateSearch(filters.placa);
@@ -52,6 +56,7 @@ export default function History({
       return;
     }
     const query = new URLSearchParams();
+    setSearched(filters);
     if (filters.fecha !== "") query.set("fecha", filters.fecha);
     if (plate !== "") query.set("placa", plate);
     if (filters.tipoVehiculo !== "") query.set("tipoVehiculo", filters.tipoVehiculo);
@@ -109,7 +114,13 @@ export default function History({
           setVoided(`Estadía anulada: ${stay.placa}.${receipt}`);
           setVoiding(null);
         }}
+        onGone={(message) => {
+          setVoidGone(message);
+          setVoiding(null);
+          if (searched !== null) search(searched);
+        }}
         onClose={() => setVoiding(null)}
+        onSessionEnded={onSessionEnded}
       />
     );
   }
@@ -156,6 +167,11 @@ export default function History({
       {voided && (
         <p role="status" className="saved">
           {voided}
+        </p>
+      )}
+      {voidGone && (
+        <p role="alert" className="alert">
+          {voidGone}
         </p>
       )}
       {result.status === "loading" && <p className="muted">Cargando…</p>}
@@ -231,6 +247,7 @@ export default function History({
                           aria-label={`Anular estadía de ${stay.placa}`}
                           onClick={() => {
                             setVoided(null);
+                            setVoidGone(null);
                             setVoiding(stay);
                           }}
                         >
