@@ -201,3 +201,102 @@ describe("void panel (FR-15)", () => {
     await panelClosed();
   });
 });
+
+describe("rejected void", () => {
+  it.each([
+    [
+      "the reason is not valid",
+      400,
+      "ENTRADA_INVALIDA",
+      "Escribe el motivo de la anulación, de hasta 200 caracteres.",
+    ],
+    [
+      "the user is not an administrator",
+      403,
+      "ACCESO_DENEGADO",
+      "Solo un administrador puede anular una estadía.",
+    ],
+  ])("shows an alert and keeps the reason when %s", async (_case, status, codigo, message) => {
+    const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(status, rejected));
+    const user = userEvent.setup();
+    renderHistory();
+    await startVoid(user, "TST130");
+    await confirmVoid(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+    expect((screen.getByLabelText("Motivo") as HTMLInputElement).value).toBe(
+      "Se le cobró al vehículo equivocado",
+    );
+    const confirm = screen.getByRole("button", { name: "Anular estadía" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+  });
+
+  // These pass from the start, on purpose: the panel already showed this error.
+  it.each([
+    ["fails", jsonResponse(500, { error: { codigo: "ERROR_INTERNO", mensaje: "Error." } })],
+    ["cannot be reached", new TypeError("Failed to fetch")],
+  ])("shows a general error when the server %s", async (_case, answer) => {
+    stubFetch(jsonResponse(200, BOTH), answer);
+    const user = userEvent.setup();
+    renderHistory();
+    await startVoid(user, "TST130");
+    await confirmVoid(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("No se pudo anular la estadía. Intenta de nuevo.");
+  });
+
+  it("goes back to sign in when the session ended", async () => {
+    const ended = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
+    stubFetch(jsonResponse(200, BOTH), jsonResponse(401, ended));
+    const onSessionEnded = vi.fn();
+    const user = userEvent.setup();
+    renderHistory(onSessionEnded);
+    await startVoid(user, "TST130");
+    await confirmVoid(user);
+    await waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(1));
+  });
+
+  // The stay left, was corrected or was voided while the administrator wrote the
+  // reason: back to the history, which is asked for again with the same filters,
+  // so the administrator sees the stay as it is now before deciding again.
+  it.each([
+    [
+      "the stay changed",
+      409,
+      "ESTADIA_CAMBIADA",
+      "La estadía cambió mientras tanto: puede que se haya registrado su salida o que se haya corregido. Revísala y vuelve a intentarlo.",
+    ],
+    ["the stay was already voided", 409, "ESTADIA_YA_ANULADA", "La estadía ya estaba anulada."],
+    ["the stay does not exist", 404, "NO_ENCONTRADO", "La estadía no existe."],
+  ])(
+    "goes back, shows why and asks for the history again when %s",
+    async (_case, status, codigo, message) => {
+      const rejected = { error: { codigo, mensaje: "Mensaje de la API." } };
+      // Meanwhile the motorcycle left, with the receipt N.º 9.
+      const left = {
+        ...INSIDE,
+        horaSalida: "2026-11-15T15:30:00.000Z",
+        estado: "CERRADA",
+        comprobante: { consecutivo: 9, total: 3220 },
+      };
+      const fetchMock = stubFetch(
+        jsonResponse(200, BOTH),
+        jsonResponse(status, rejected),
+        jsonResponse(200, { estadias: [CLOSED, left], hayMas: false }),
+      );
+      const user = userEvent.setup();
+      renderHistory();
+      await startVoid(user, "TST12A");
+      await confirmVoid(user, "El vehículo no entró");
+      await panelClosed();
+      expect((await screen.findByRole("alert")).textContent).toBe(message);
+      await screen.findByText("N.º 9 · $3.220");
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "/api/estadias?fecha=2026-11-15",
+        "/api/estadias/6/anulacion",
+        "/api/estadias?fecha=2026-11-15",
+      ]);
+    },
+  );
+});
