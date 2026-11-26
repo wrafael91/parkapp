@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
-| Versión | 1.13 — 22 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127) |
+| Versión | 1.14 — 26 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -427,7 +427,7 @@ ampliarlos cuando se habiliten más espacios.
 | OE1. Diseñar el modelo de datos y la arquitectura | Reglas de negocio, requisitos, modelo de datos y arquitectura (Sprint 1) | Todos los FR (el modelo debe soportarlos); integridad y trazabilidad: BR-03, BR-11, BR-12, BR-15, BR-16, NFR-12 |
 | OE2. Desarrollar los módulos de registro y facturación | Historias de usuario (Sprints 2 y 3) | FR-01 a FR-24; NFR-01 a NFR-08, NFR-20 |
 | OE3. Desplegar en AWS con buenas prácticas de seguridad | Despliegue (Sprint 2) | NFR-09 a NFR-11, NFR-16 a NFR-18, NFR-23 |
-| OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3) | NFR-13 a NFR-18, NFR-21, NFR-22 |
+| OE4. Evaluar el desempeño y la confiabilidad | Pruebas de carga, disponibilidad, restauración y usabilidad (Sprint 3), con los resultados en `docs/evaluacion.md` | NFR-13 a NFR-18, NFR-21, NFR-22 |
 
 ### 5.2 Requisitos funcionales
 
@@ -514,3 +514,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.11 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): FR-24 y US-17 (Should), dos filas nuevas en la matriz de permisos y actor administrador con los cupos. Cobertura con 19 reglas y 24 requisitos; origen de BR-19 en la sección 5.3. S3-09 (#110) |
 | 1.12 | 22 de noviembre de 2026 | US-10 en dos partes: la primera (S3-10) corrige una estadía activa, y quedan pendientes anular, corregir una estadía cerrada y corregir una salida. Criterio nuevo: la corrección del tipo no se rechaza por cupos (BR-19). S3-10 (#116) |
 | 1.13 | 22 de noviembre de 2026 | US-10: la segunda parte (S3-11) anula una estadía activa o cerrada sin reemplazo (FR-15). Quedan pendientes corregir una estadía cerrada y corregir una salida. S3-11 (#121) |
+| 1.14 | 26 de noviembre de 2026 | La fila del OE4 en la matriz de trazabilidad (sección 5.1) remite a `docs/evaluacion.md`, con los resultados de la restauración, la carga y el monitoreo. El texto de los requisitos no cambia. S3-13 (#127) |
