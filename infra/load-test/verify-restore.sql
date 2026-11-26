@@ -59,10 +59,12 @@ FROM pg_enum e
 JOIN pg_type t ON t.oid = e.enumtypid;
 
 -- 4. Settings: time zone UTC (docs/arquitectura.md, 6.2), the PostgreSQL version and
--- TLS in this connection (rds.force_ssl only exists in RDS).
+-- TLS in this connection. rds.force_ssl only exists in RDS, and parkapp_app cannot
+-- read it there either (drills of November 24 and 26, 2026): the drill checks it in
+-- the parameter group (README, step 3.2).
 SELECT 'ajuste', 'timezone', current_setting('TimeZone');
 SELECT 'ajuste', 'version', current_setting('server_version');
-SELECT 'ajuste', 'rds.force_ssl', coalesce(current_setting('rds.force_ssl', true), 'no es RDS');
+SELECT 'ajuste', 'rds.force_ssl', coalesce(current_setting('rds.force_ssl', true), 'no visible para este rol');
 SELECT 'ajuste', 'tls', CASE WHEN ssl THEN 'si, ' || version ELSE 'no' END
 FROM pg_stat_ssl
 WHERE pid = pg_backend_pid();
