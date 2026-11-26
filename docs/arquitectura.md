@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71), S3-02 (#69) |
-| Versión | 1.7 — 14 de noviembre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71), S3-02 (#69), S3-12 (#126), S3-13 (#127), S3-14 (#128) |
+| Versión | 1.8 — 26 de noviembre de 2026 |
 
 Este documento describe la arquitectura de RoloPark con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -397,10 +397,24 @@ El job de despliegue no usa `environment:` de GitHub Actions. Con esa opción, G
 ### 6.7 Disponibilidad y respaldos
 
 - AWS compromete 99,5 % de disponibilidad para una instancia individual de EC2 y otro 99,5 % para una base de datos de RDS en una sola zona. Combinados dan cerca de 99,0 %, el mínimo de NFR-16. La disponibilidad real suele ser mayor; el riesgo principal son los propios despliegues y el mantenimiento, y por eso se programan de madrugada.
-- Si la API falla, systemd la reinicia en segundos (NFR-17).
-- Una restauración crea una nueva instancia de RDS, desde la instantánea diaria de AWS Backup (cualquiera de los últimos 7 días) o desde un punto en el tiempo de las últimas 24 horas (ADR 0009). Hay que revisar que la instancia nueva quede con el grupo de subredes de la base, el grupo de seguridad `parkapp-db` y el grupo de parámetros `parkapp-postgres16`. Después se actualiza la dirección de la base de datos en `/parkapp/prod/` y se reinicia la API. El simulacro se hace y se documenta en el Sprint 3 (NFR-18).
-- Todavía no hay aviso si falla un respaldo de AWS Backup. Mientras el monitoreo del Sprint 3 no lo incluya, se revisa con `aws backup list-backup-jobs`.
-- El monitoreo externo con el que se mide NFR-16 se define en el Sprint 3.
+- Si la API falla, systemd la reinicia en segundos (NFR-17): unos 7 s, medidos el 31 de octubre de 2026.
+- **Monitor externo (NFR-16):** desde el 23 de noviembre de 2026, UptimeRobot (plan gratuito) consulta `https://rolopark.com/api/salud` cada 5 minutos y avisa por correo si la respuesta no trae `"estado":"ok"`. Ese endpoint consulta la base (`SELECT 1`), así que el monitor cubre DNS, TLS, Nginx, la API y la base. No vigila el vencimiento del certificado (R8 del modelo de amenazas). La disponibilidad medida se reporta en `docs/evaluacion.md`.
+- **Aviso de fallos de los respaldos:** desde el 23 de noviembre de 2026, una regla de EventBridge envía a un tema de SNS, con suscripción de correo, los trabajos de AWS Backup que terminan en `FAILED`, `ABORTED` o `EXPIRED` (S3-14).
+
+**Restauración (NFR-18).** Una restauración crea una nueva instancia de RDS. El procedimiento se probó en el simulacro del 24 y el 26 de noviembre de 2026 (S3-12; resultados en `docs/evaluacion.md`, sección 3, y comandos en `infra/load-test/README.md`):
+
+1. Restaurar a una instancia nueva, por una de dos vías (ADR 0009):
+   - a un punto de las últimas 24 horas, para un daño reciente: 10 min 41 s hasta estar disponible, con un RPO de 5 a 7 minutos;
+   - desde la instantánea diaria de AWS Backup de cualquiera de los últimos 7 días, para un daño que se descubre tarde: 5 min 36 s hasta estar disponible, con los datos de las 4:30 a. m. de ese día. RDS acepta el punto de recuperación de AWS Backup con el usuario administrador, sin un rol de restauración.
+
+   La instancia nueva va con el grupo de subredes de la base, el grupo de seguridad `parkapp-db`, el grupo de parámetros `parkapp-postgres16`, la CA de RDS y la zona us-east-1a, sin acceso público. En un incidente real lleva también la retención de 1 día y la protección contra borrado de producción (en el simulacro iban en 0 y sin protección, porque se borraba enseguida).
+2. Revisar la configuración y comparar los datos con `infra/load-test/verify-restore.sql`.
+3. Renombrar la instancia dañada y después la restaurada a `parkapp-db`. Así, la restaurada conserva el endpoint y el ARN, y no cambian los parámetros de `/parkapp/prod/`, la acción de Budgets ni la selección de AWS Backup, que la nombran por su ARN. Apuntar la API a una instancia con otro nombre dejaría la base nueva fuera de la acción de Budgets y de los respaldos diarios. Cada renombre tomó 1 min 20 s, más unos 2 minutos hasta que el nombre nuevo resuelve; el corte completo se estima en 5 a 8 minutos.
+4. Reiniciar la API (`sudo systemctl restart parkapp-api`) para que no queden conexiones a la instancia vieja.
+
+En el simulacro, la restauración a un punto en el tiempo tardó 40 minutos hasta que la aplicación respondió sobre la base restaurada, y la de AWS Backup 13 minutos hasta los datos verificados, frente a las 2 horas de NFR-18. El plan gratuito admite 2 instancias de RDS: en un incidente caben la dañada y una restaurada, así que, si una restauración sale mal, hay que borrarla antes de intentar otra.
+
+**Capacidad.** En la prueba de carga (S3-13, `docs/evaluacion.md`, sección 4), con 20 operadores en uso realista, el ingreso respondió en 131 ms en el percentil 95, RDS no pasó del 20 % de CPU y la EC2 del 11 %. En saturación (20 operadores sin pausas), el límite fue la base y el pool de 10 conexiones de la API, no la CPU de la EC2: RDS llegó al 81 % y la EC2 al 21,5 %. Los ingresos simultáneos de un mismo tipo de vehículo se atienden en fila, por el candado de los cupos (BR-19, `docs/modelo-datos.md`, decisión 8), unos 60 ms cada uno, y la transacción que espera conserva su conexión. Si un parqueadero más grande lo necesitara, las mejoras posibles son un pool algo mayor o acortar la parte de la transacción que se hace con el candado tomado. Un pool mayor no elimina la espera del candado, pero evita que los ingresos de un tipo hagan esperar a los del otro y a las salidas.
 
 ### 6.8 Costo
 
@@ -460,3 +474,4 @@ de amenazas de S1-07 (ADR 0003).
 | 1.5 | 2 de noviembre de 2026 | ADR 0009: respaldos diarios con AWS Backup, porque el plan gratuito limita la retención de RDS a 1 día (6.1, 6.2, 6.4, 6.6, 6.7 y 6.8). `sub` de OIDC con los ID inmutables del repositorio (6.6 y ADR 0007). Correcciones: Nginx reemplaza `X-Forwarded-For` (6.3) y costo del dominio `rolopark.com` (6.8). (#64) |
 | 1.6 | 12 de noviembre de 2026 | ADR 0010: RoloPark es el nombre visible del producto y los identificadores internos siguen como `parkapp` (secciones 2 a 4). Enlace al modelo de amenazas en la sección 7. (#71) |
 | 1.7 | 14 de noviembre de 2026 | Detalles de la implementación de S2-04 a S2-08 y S2-10: endurecimiento del servidor y de systemd, certificados de las conexiones a la base, zona horaria UTC, contraseña del maestro, dominio, renovación del certificado y dos acciones de Budgets (6.2); configuración de Nginx (6.3); rol de Budgets (6.4); permisos de la base y scripts de arranque (6.5); jobs, artefacto y documento de despliegue (6.6). ADR 0004, 0005 y 0006 actualizados. S3-02 (#69) |
+| 1.8 | 26 de noviembre de 2026 | Sección 6.7 con los resultados del objetivo 4: monitor externo (NFR-16) y aviso de fallos de los respaldos (S3-14); procedimiento de restauración probado en el simulacro, con el renombre en lugar de cambiar la dirección de la base en `/parkapp/prod/`, las dos vías y sus tiempos, y el cupo de 2 instancias del plan gratuito (S3-12); nota de capacidad con el cuello de botella en saturación (S3-13). Resultados en `docs/evaluacion.md`. S3-12 (#126), S3-13 (#127) y S3-14 (#128) |
