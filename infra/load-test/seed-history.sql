@@ -1,13 +1,18 @@
 -- Synthetic history for the load test of NFR-14 (S3-13, #127): 100,000 stays in the
 -- 333 days before the run, about 300 a day (a parking lot with 300 vehicles a day,
 -- as NFR-14 says). Only for the instance restored in the drill (#126), never for
--- production: it refuses to run without -v ambiente=simulacro, and when the database
--- already has more than 1,000 stays.
+-- production: it refuses to run without -v ambiente=simulacro, without the load
+-- account of the drill (carga@rolopark.test, which only exists in the restored
+-- instance), and when the database already has more than 1,000 stays.
 --
--- It runs as parkapp_app, the role of the API, which can insert stays, receipts and
--- accounts (docs/arquitectura.md, 6.5):
+-- It runs as parkapp_migrator, the owner of the tables. The database grants nothing
+-- to PUBLIC (docs/arquitectura.md, 6.5), so parkapp_app cannot create the temporary
+-- table below ("permission denied to create temporary tables", found in AWS on
+-- November 24, 2026), and only the owner can run ANALYZE at the end. The URL comes
+-- from /parkapp/prod/db/url-migrator and lives only in memory (README, step 4.1):
 --
---   psql "$RP_PSQL" -v ambiente=simulacro -f seed-history.sql
+--   RP_PSQL_SIM_MIG="$(RP_DB="$RP_DB_MIG" node db-url.mjs parkapp-db-simulacro psql)"
+--   psql "$RP_PSQL_SIM_MIG" -X -v ambiente=simulacro -f seed-history.sql
 --
 -- Simplifications, acceptable because the instance is temporary: every stay uses the
 -- rate, grace period and period cap in force today (RI-08 is not a trigger yet), the
@@ -29,6 +34,12 @@ BEGIN
   IF current_setting('rolopark.ambiente') <> 'simulacro' THEN
     RAISE EXCEPTION 'Solo para la instancia restaurada: psql -v ambiente=simulacro (recibido: %).',
       current_setting('rolopark.ambiente');
+  END IF;
+  IF current_user <> 'parkapp_migrator' THEN
+    RAISE EXCEPTION 'Corre como parkapp_migrator, el dueño de las tablas (rol actual: %).', current_user;
+  END IF;
+  IF NOT EXISTS (SELECT FROM usuario WHERE correo = 'carga@rolopark.test') THEN
+    RAISE EXCEPTION 'No está la cuenta de carga (README, paso 3.4): esta no parece la instancia restaurada.';
   END IF;
   IF (SELECT count(*) FROM estadia) > 1000 THEN
     RAISE EXCEPTION 'La base ya tiene más de 1.000 estadías: la semilla no se carga dos veces.';
@@ -136,8 +147,11 @@ FROM (
 
 COMMIT;
 
--- What was loaded. parkapp_app cannot run ANALYZE (it is not the owner): autovacuum
--- analyzes the tables after this many inserts; README, step "Semilla".
+-- Fresh statistics for the planner before the load test, without waiting for
+-- autovacuum.
+ANALYZE usuario, estadia, comprobante;
+
+-- What was loaded.
 SELECT estado, tipo_vehiculo, count(*) AS estadias, min(hora_ingreso) AS primera, max(hora_ingreso) AS ultima
 FROM estadia
 WHERE ingreso_por_id = (SELECT id FROM usuario WHERE correo = 'semilla.carga@rolopark.invalid')

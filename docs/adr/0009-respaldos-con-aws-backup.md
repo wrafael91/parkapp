@@ -90,3 +90,29 @@ exactamente 7 días después.
   (sección 6.7).
 - Al pasar al plan de pago, la retención de RDS sube a 7 días y se decide si
   el plan de AWS Backup se mantiene.
+
+## Seguimiento (26 de noviembre de 2026)
+
+El simulacro de NFR-18 (S3-12, #126) probó las dos vías de restauración
+(resultados en `docs/evaluacion.md`, sección 3):
+
+- **A un punto en el tiempo (24 de noviembre):** la instancia nueva estuvo
+  disponible a los 10 min 41 s, y la aplicación respondió sobre ella a los
+  40 minutos, con los datos iguales a producción. El RPO fue de 5 a 7 minutos:
+  lo que RDS tarda en publicar la última hora restaurable.
+- **Desde AWS Backup (26 de noviembre):** RDS aceptó la instantánea de las
+  4:30 a. m. con el usuario administrador, sin un rol de restauración, y la
+  instancia estuvo disponible a los 5 min 36 s, con los datos verificados a los
+  13 minutos. Es más rápida porque no reproduce el registro de transacciones; su
+  RPO es de hasta un día.
+- El plan gratuito admite 2 instancias de RDS, así que las dos restauraciones se
+  hicieron en secuencia, y en un incidente solo cabe una restaurada a la vez.
+- El corte se hace renombrando la instancia dañada y luego la restaurada a
+  `parkapp-db`, para que la base nueva conserve el ARN que usan la selección del
+  plan `parkapp-diario` y la acción de Budgets (`docs/arquitectura.md`,
+  sección 6.7).
+
+La consecuencia de no tener aviso si un respaldo falla quedó resuelta el 23 de
+noviembre de 2026: una regla de EventBridge avisa por correo, a través de SNS,
+de los trabajos de AWS Backup en `FAILED`, `ABORTED` o `EXPIRED` (S3-14, #128;
+R4 del modelo de amenazas). La decisión no cambia.

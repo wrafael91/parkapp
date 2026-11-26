@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S2-13 (#8); actualizado en S2-10 (#40), S2-11 (#41), S2-12 (#42), S2-25 (#48), S2-18 (#47), S3-03 (#6), S3-04 (#14), S3-06 (#101), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116) y S3-11 (#121) |
-| Versión | 1.12 — 22 de noviembre de 2026 |
+| Tarea | S2-13 (#8); actualizado en S2-10 (#40), S2-11 (#41), S2-12 (#42), S2-25 (#48), S2-18 (#47), S3-03 (#6), S3-04 (#14), S3-06 (#101), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-12 (#126) y S3-14 (#128) |
+| Versión | 1.13 — 26 de noviembre de 2026 |
 
 RoloPark es el nombre visible del producto desde el 3 de noviembre de 2026 (S2-23,
 #71). Los identificadores internos (repositorio, recursos de AWS, roles de la base
@@ -21,8 +21,8 @@ pendiente.
 
 **Dentro del alcance:** el navegador del usuario, Nginx, la API, la base de datos
 en RDS, el despliegue desde GitHub Actions, la cuenta de AWS con sus servicios y
-respaldos, y los proveedores externos de los que depende el sistema (Cloudflare y
-Let's Encrypt).
+respaldos, y los proveedores externos de los que depende el sistema (Cloudflare,
+Let's Encrypt y, desde S3-14, el monitor externo UptimeRobot).
 
 **Fuera del alcance:** la seguridad física del parqueadero, un equipo del
 operador ya comprometido (por ejemplo, con un programa que captura el teclado),
@@ -62,10 +62,11 @@ infraestructura interna de AWS, GitHub y Cloudflare.
 | E8 | Artefactos de despliegue | Almacén de datos | Bucket S3 privado |
 | E9 | Repositorio y GitHub Actions | Entidad externa | GitHub |
 | E10 | Systems Manager | Proceso | Run Command (`ParkApp-Deploy`) y Session Manager |
-| E11 | Cuenta de AWS | Proceso | IAM, AWS Budgets y CloudTrail |
+| E11 | Cuenta de AWS | Proceso | IAM, AWS Budgets, CloudTrail, EventBridge y SNS |
 | E12 | Cloudflare | Entidad externa | Registrador del dominio y DNS de `rolopark.com` |
 | E13 | Let's Encrypt | Entidad externa | Autoridad que emite el certificado TLS |
 | E14 | Mantenedor de la plataforma | Entidad externa | Administra GitHub, AWS y Cloudflare |
+| E15 | Monitor externo (UptimeRobot) | Entidad externa | Servicio en internet, plan gratuito. Consulta `/api/salud` cada 5 minutos y avisa al mantenedor por correo |
 
 ## 3. Flujos de datos
 
@@ -87,6 +88,8 @@ infraestructura interna de AWS, GitHub y Cloudflare.
 | F14 | certbot (servidor) ↔ Let's Encrypt | Desafío ACME y certificado | HTTPS de salida y HTTP en la ruta de validación | LC6 |
 | F15 | Mantenedor → GitHub | Cambios por pull request | HTTPS | LC4 (indirecto, por F7 y F8) |
 | F16 | Mantenedor → Session Manager → scripts de arranque → base de datos | Cuenta del primer administrador, tarifas y periodo de gracia, con el usuario `parkapp_app`; la URL se lee de Parameter Store y la contraseña llega por la entrada estándar | Session Manager con MFA; SQL con TLS | LC5 y LC3 |
+| F17 | Monitor externo → Nginx → API → base de datos | Consulta de `/api/salud`, sin sesión ni datos de la aplicación; la respuesta solo dice si el sistema está disponible. Si falla, aviso por correo al mantenedor | HTTPS, puerto 443 | LC1 |
+| F18 | AWS Backup → EventBridge → SNS → mantenedor | Estado de un trabajo de respaldo que terminó en `FAILED`, `ABORTED` o `EXPIRED` | Plano de control de AWS y correo | LC5 |
 
 ## 4. Límites de confianza
 
@@ -118,6 +121,7 @@ flowchart TB
         cf["<b>E12 Cloudflare</b><br/>Dominio y DNS con DNSSEC"]
         le["<b>E13 Let's Encrypt</b>"]
         gh["<b>E9 GitHub</b><br/>Repositorio y Actions"]
+        mon["<b>E15 UptimeRobot</b><br/>Monitor externo"]
     end
 
     subgraph aws["Cuenta de AWS"]
@@ -136,7 +140,7 @@ flowchart TB
             ps["<b>E7 Parameter Store</b>"]
             s3["<b>E8 S3</b><br/>Artefactos"]
             bk[("<b>E6 AWS Backup</b>")]
-            iam["<b>E11 IAM, Budgets y CloudTrail</b>"]
+            iam["<b>E11 IAM, Budgets, CloudTrail,<br/>EventBridge y SNS</b>"]
         end
     end
 
@@ -155,11 +159,15 @@ flowchart TB
     mant -- "F13 MFA" --> iam
     mant -- "F15 pull request" --> gh
     nginx -- "F14 ACME (certbot)" --> le
+    mon -- "F17 HTTPS: /api/salud" --> nginx
+    mon -- "F17 aviso por correo" --> mant
+    bk -. "F18 trabajo fallido" .-> iam
+    iam -. "F18 aviso por correo" .-> mant
 
     classDef ext fill:#999999,stroke:#6b6b6b,color:#ffffff
     classDef comp fill:#438dd5,stroke:#2e6295,color:#ffffff
     classDef svc fill:#85bbf0,stroke:#5d82a8,color:#000000
-    class usuario,mant,cf,le,gh ext
+    class usuario,mant,cf,le,gh,mon ext
     class nginx,api,db comp
     class ssm,ps,s3,bk,iam svc
 ```
@@ -169,7 +177,7 @@ flowchart TB
 Las tareas del Sprint 2 se citan por su ID (S2-XX); el detalle de cada una está
 en su issue y en su pull request.
 
-### 6.1 Borde: navegador, DNS y Nginx (E1 a E3, E12, E13; F1 a F3 y F14)
+### 6.1 Borde: navegador, DNS y Nginx (E1 a E3, E12, E13, E15; F1 a F3, F14 y F17)
 
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
@@ -180,7 +188,8 @@ en su issue y en su pull request.
 | A-05 | E12 | S, T | Alguien toma la cuenta de Cloudflare y cambia el DNS, el CAA o el DNSSEC. | Verificación en dos pasos en la cuenta. Registros sin proxy: el TLS termina en Nginx, no en Cloudflare. | ADR 0005 | Implementado (S2-06); cuentas de un solo mantenedor: R11 |
 | A-06 | E3 | S, I | Escaneos por IP o con un `Host` inventado buscan otros sitios o el certificado. | Puerto 80 por IP o nombre desconocido: `return 444`. Puerto 443: `ssl_reject_handshake on`. Las redirecciones no usan `$host`. | NFR-09 | Implementado (S2-06) |
 | A-07 | E3, E4 | I | Las respuestas revelan versiones del software, útiles para buscar vulnerabilidades. | `server_tokens off` en Nginx y `x-powered-by` deshabilitado en Express. | NFR-07 | Implementado (S2-02 y S2-06) |
-| A-08 | F14, E3 | D | El certificado vence sin renovarse y el sitio deja de funcionar. | `certbot-renew.timer` (dos veces al día; renueva cuando faltan 30 días) con un hook que recarga Nginx; `certbot renew --dry-run` verificado. | ADR 0005 | Implementado (S2-06); sin monitor externo: R8 |
+| A-08 | F14, E3 | D | El certificado vence sin renovarse y el sitio deja de funcionar. | `certbot-renew.timer` (dos veces al día; renueva cuando faltan 30 días) con un hook que recarga Nginx; `certbot renew --dry-run` verificado. | ADR 0005 | Implementado (S2-06); el monitor externo (S3-14) no vigila el vencimiento: R8 |
+| A-54 | E3, E4, E5, F17 | D | Una caída del sitio (DNS, certificado, Nginx, la API o la base) pasa inadvertida y se prolonga, porque nadie usa la app a esa hora. | Monitor externo (UptimeRobot) cada 5 minutos a `/api/salud`, que consulta la base, con aviso por correo; el aviso se probó con un monitor temporal que falla a propósito. El monitor solo lee: no tiene sesión ni credenciales. | NFR-16 · arquitectura 6.7 | Implementado (S3-14) |
 
 ### 6.2 Aplicación web y sesión (E2, F1)
 
@@ -213,7 +222,7 @@ en su issue y en su pull request.
 | A-28 | E4 | D | El proceso de la API falla y el servicio queda caído. | systemd con `Restart=always`: volvió a escuchar unos 7 s después de matarlo. | NFR-17 | Implementado (S2-04) |
 | A-53 | E2, E4 | I | Un usuario con sesión usa el historial de placas para fines ajenos al parqueadero (por ejemplo, seguir un vehículo) o lo entrega a terceros. | Solo cuentas activas con sesión, y solo consulta: nadie borra registros (BR-12). Cada consulta trae como máximo 500 estadías, sin los nombres de quienes las registraron. No hay exportación ni reporte impreso del historial; si se agregan, serán solo del administrador, que decide qué se entrega a terceros como responsable del tratamiento (Ley 1581 de 2012). | Requisitos 1.3 (decisión 5) · FR-18 | En parte (S3-06): sin registro de quién consultó qué placa; R14 |
 
-### 6.4 Base de datos y respaldos (E5, E6; F5, F10 y F11)
+### 6.4 Base de datos y respaldos (E5, E6; F5, F10, F11 y F18)
 
 | ID | Elemento o flujo | STRIDE | Amenaza | Control | Referencia | Estado |
 |---|---|---|---|---|---|---|
@@ -221,8 +230,9 @@ en su issue y en su pull request.
 | A-30 | E5 | I | Acceso directo a la base desde internet. | Subredes privadas sin ruta a internet y sin acceso público. El grupo `parkapp-db` solo acepta el 5432 desde `parkapp-web` y no tiene salida. | NFR-09 · arquitectura 6.3 | Implementado (S2-01 y S2-04) |
 | A-31 | F5, F10 | I, T | Intercepción o alteración del tráfico entre el servidor y la base. | `rds.force_ssl = 1` y verificación estricta del certificado de RDS en las dos conexiones (TLS 1.3 verificado). | NFR-09 | Implementado (S2-04) |
 | A-32 | E5, E6 | I | Lectura de los discos o de las instantáneas. | Cifrado en reposo con KMS en RDS y en sus respaldos; disco de la instancia cifrado. | NFR-09 | Implementado (S2-04 y S2-21) |
-| A-33 | E5, E6 | T, D | Pérdida o alteración de datos por una migración equivocada, un borrado o una corrupción. | AWS Backup: instantánea diaria a las 4:30 a. m. que se conserva 7 días. Respaldos de RDS con recuperación a un punto de las últimas 24 horas. Protección contra borrado. Respaldo bajo demanda antes de una migración que cambie tablas existentes. | NFR-18 · ADR 0009 | Implementado (S2-21); simulacro de restauración (Sprint 3); R4 y R5 |
+| A-33 | E5, E6 | T, D | Pérdida o alteración de datos por una migración equivocada, un borrado o una corrupción. | AWS Backup: instantánea diaria a las 4:30 a. m. que se conserva 7 días. Respaldos de RDS con recuperación a un punto de las últimas 24 horas. Protección contra borrado. Respaldo bajo demanda antes de una migración que cambie tablas existentes. Simulacro hecho el 24 y el 26 de noviembre de 2026: restauración a un punto en el tiempo en 40 minutos y desde AWS Backup en 13, con los datos iguales a producción, y corte por renombre (`docs/evaluacion.md`). | NFR-18 · ADR 0009 · arquitectura 6.7 | Implementado (S2-21); simulacro hecho (S3-12); R5 |
 | A-34 | E6, E11 | E | El rol de AWS Backup, con la política administrada, puede modificar cualquier base de la cuenta (contraseña del maestro, protección contra borrado, retención). | Deny explícito sobre `rds:ModifyDBInstance` y `rds:ModifyDBCluster`. Verificado con el simulador de políticas (`explicitDeny`) y con un respaldo exitoso con el Deny puesto. | ADR 0009 · arquitectura 6.4 | Implementado (S2-21) |
+| A-55 | E6, F18 | D | Un respaldo diario falla sin que nadie lo note, y el día que hace falta restaurar no hay una instantánea reciente. | Regla de EventBridge para los trabajos de AWS Backup en `FAILED`, `ABORTED` o `EXPIRED`, que avisa por correo a través de un tema de SNS; la política del tema solo deja publicar a la cuenta y a la regla. Probada con el patrón de la regla y un mensaje de prueba. | NFR-18 · ADR 0009 | Implementado (S3-14); cierra R4 |
 
 ### 6.5 Secretos, servidor y cuenta de AWS (E7, E10, E11; F6, F12, F13 y F16)
 
@@ -248,7 +258,7 @@ en su issue y en su pull request.
 | A-45 | F7, F9, E8 | T | El artefacto se altera entre la compilación y el servidor. | El flujo calcula el SHA-256 y el documento lo verifica antes de extraer. Bucket privado, cifrado y solo con HTTPS. El código extraído es de `root`, así que la API no puede modificarlo. | ADR 0007 | Implementado (S2-05) |
 | A-46 | E9 | T, E | Un script de instalación de npm malicioso obtiene credenciales de AWS o corre en producción. | Los scripts de npm (backend y web) corren solo en el job "Test and package", que no tiene `id-token`. El servidor no ejecuta `npm ci`: recibe el artefacto ya compilado. | NFR-11 · ADR 0007 | Implementado (S2-05 y S2-08) |
 | A-47 | E9, F15 | T | Llega a `main` código sin revisar, que no compila o con errores de tipos. | Ruleset `protect-main`: pull request obligatorio, sin *force push* y con las verificaciones obligatorias "Backend tests and build" y "Web build" (incluye la revisión de tipos con `tsc`). | NFR-19 | Implementado (S2-03 y S2-08); sin análisis estático: R13 |
-| A-48 | E9 | T | Una dependencia con una vulnerabilidad conocida llega a producción. | `npm audit` al cierre de cada sprint en el backend y en la web; `package-lock.json` versionado. El 4 de noviembre de 2026: 0 vulnerabilidades en los dos. | NFR-11 | Implementado; advertencias aceptadas en #5, resueltas: R12 |
+| A-48 | E9 | T | Una dependencia con una vulnerabilidad conocida llega a producción. | `npm audit` al cierre de cada sprint en el backend y en la web; `package-lock.json` versionado. El 4 de noviembre de 2026: 0 vulnerabilidades en los dos. | NFR-11 | Implementado; advertencias aceptadas en #5, resueltas: R12; aviso de deprecación de `pg` bajo carga: R19 |
 | A-49 | E9 | I | Los registros públicos de GitHub Actions revelan datos de la infraestructura. | El ARN del rol, el bucket y la instancia son secretos de GitHub; `mask-aws-account-id: true`. El flujo no imprime la salida de Run Command (muestra el servidor de RDS), solo su estado. | NFR-10 | Implementado (S2-05) |
 | A-50 | E9, E14 | S, T | Alguien toma la cuenta de GitHub del mantenedor, fusiona código malicioso y lo despliega. | Verificación en dos pasos en GitHub, activada el 4 de noviembre de 2026 por un hallazgo de este modelo: hasta ese día, la cuenta entraba solo con contraseña, mientras AWS y Cloudflare ya pedían un segundo factor. El despliegue pasa por las verificaciones obligatorias y por `ParkApp-Deploy`, con su vuelta atrás automática. | NFR-19 · ADR 0007 | Implementado (S2-13); un solo mantenedor: R11 |
 
@@ -361,11 +371,11 @@ atacante (*login CSRF*).
 | R1 | Al cierre del Sprint 2 no hay límite de peticiones, bloqueo por intentos fallidos ni lista de contraseñas filtradas (NFR-02 en parte, NFR-03 y NFR-08). | Replaneación del 26 de octubre de 2026, según la capacidad medida. | Mínimo de 15 caracteres y argon2id (S2-10). Al cierre del Sprint 2 solo existe la cuenta del administrador. | Sprint 3 ("Harden sign-in") |
 | R2 | La verificación del rol es básica; la matriz completa no se prueba (NFR-05). | Replaneación del 26 de octubre. | Al cierre del Sprint 2 solo hay un administrador: las cuentas de operador llegan con US-02 (Sprint 3). La configuración de la tarifa y del periodo de gracia (S2-25) y la del tope por periodo (S3-04) ya responden 403 `ACCESO_DENEGADO` a un operador y lo registran en la bitácora, con pruebas como `parkapp_app`. | Sprint 3 ("Test the full permission matrix") |
 | R3 | La base todavía no tiene los triggers de integridad: transiciones de estado, versiones que se cierran una sola vez, tarifa no mayor que el tope, un comprobante por cada estadía cerrada y reglas del reemplazo (RI-04, RI-06, RI-08, RI-09, RI-11 y RI-19 en parte). | Se dividió S3-03 (#6) en dos partes para entregar primero las restricciones que más protegen. | Desde S3-03: CHECK de RI-01, RI-03, RI-05, RI-07, RI-09, RI-10, RI-12, RI-17 y RI-18, e índices únicos parciales, incluido el de una estadía activa por placa, así que dos ingresos simultáneos de la misma placa ya no pueden quedar activos (BR-03). `UPDATE` solo por columna (S2-19), validación de `calculateFee` (S2-09) y verificación del tope en la API (S2-25). | Sprint 3 (#6, segunda parte) |
-| R4 | No hay aviso si un respaldo de AWS Backup falla. | El monitoreo se define en el Sprint 3. | Revisión manual con `aws backup list-backup-jobs`. | Sprint 3 (monitoreo) o backlog (aviso por SNS) |
+| R4 | **Resuelto.** No había aviso si un respaldo de AWS Backup fallaba. | — | Desde el 23 de noviembre de 2026, EventBridge y SNS avisan por correo de los trabajos en `FAILED`, `ABORTED` o `EXPIRED` (A-55, S3-14). | Cerrado |
 | R5 | La recuperación a un punto en el tiempo cubre solo 24 horas, y los respaldos están en la misma cuenta y región: quien tome la cuenta podría borrar la base y sus respaldos. | Límites del plan gratuito (retención de RDS de 1 día y sin funciones entre regiones). | MFA en las personas, protección contra borrado, CloudTrail y el Deny del rol de respaldos. | Al pasar al plan de pago (ADR 0009) |
 | R6 | No hay protección contra denegación de servicio de capa 7 (sin AWS WAF ni proxy de Cloudflare) y hay una sola instancia. | Costo, y NFR-16 pide 99 %, alcanzable con una instancia (ADR 0002, arquitectura 6.9). | AWS Shield Standard y el límite de 64 KB por petición; límite de peticiones en el Sprint 3. | Sprint 3 (NFR-08), y si un parqueadero empieza a usar la app |
 | R7 | La acción de Budgets detiene el sistema sin aprobación, y no es un tope en tiempo real (Budgets se actualiza hasta tres veces al día; detener no deja el costo en cero; RDS se enciende sola a los 7 días). | Decisión del 2 de noviembre de 2026: no hay usuarios reales. | Alerta al 80 % por correo; encendido manual documentado. | Si un parqueadero empieza a usar la app |
-| R8 | No hay monitor externo del vencimiento del certificado; Let's Encrypt ya no avisa por correo. | El monitoreo se define en el Sprint 3. | `certbot-renew.timer` renueva 30 días antes; el certificado actual vence el 30 de enero de 2027. | Sprint 3 (monitoreo) o backlog |
+| R8 | No hay monitor externo del vencimiento del certificado: Let's Encrypt ya no avisa por correo, y el monitor de disponibilidad (S3-14) no mira la fecha de vencimiento. | El certificado actual vence el 30 de enero de 2027, después de la sustentación, y la renovación automática está verificada. | `certbot-renew.timer` renueva 30 días antes. Si el certificado llegara a vencer, la consulta HTTPS del monitor falla y avisa en menos de 5 minutos (A-54), aunque ya con el sitio caído. | Backlog (vigilar la fecha de vencimiento) |
 | R9 | HSTS sin `preload`: la primera visita de un navegador nuevo puede empezar por HTTP. | `preload` es difícil de revertir y obliga a todos los subdominios. | Redirección 301 a HTTPS con nombre fijo; cookie con `Secure`. | Si la app se ofrece a más parqueaderos (después de diciembre de 2026) |
 | R10 | La cookie no usa el prefijo `__Host-`, porque el ADR 0003 fija `Path=/api`: un subdominio en manos de un atacante podría escribir cookies para el dominio. | Hoy no existe otro subdominio que `www`, que solo redirige desde el mismo Nginx. | DNS con verificación en dos pasos; la verificación exacta de `Origin` rechaza peticiones desde subdominios; cada inicio de sesión crea un token nuevo. | Si se agrega un subdominio |
 | R11 | Una sola persona administra GitHub, AWS y Cloudflare, y nadie más revisa sus cambios. | Proyecto individual. | MFA o verificación en dos pasos en las tres cuentas (en GitHub, desde el 4 de noviembre de 2026); pull request y CI obligatorios; CloudTrail. | Si se suma otra persona al proyecto |
@@ -376,13 +386,14 @@ atacante (*login CSRF*).
 | R16 | Un operador registra la salida de un vehículo que sigue dentro para liberar un cupo, o deja entrar un vehículo sin registrarlo cuando no quedan cupos (BR-19). | El sistema no ve los espacios físicos (sin sensores): cuenta los vehículos con las estadías registradas. | Toda salida emite un comprobante que el operador debe cuadrar, con su usuario y su IP; cada rechazo por cupo queda en la bitácora con la placa y el operador, así que un rechazo seguido de una salida y un ingreso del mismo usuario en segundos deja rastro; el marcador no coincide con el parqueadero; el ingreso se bloquea en el servidor, en la misma transacción, con un candado por tipo de vehículo, y un carro no puede registrarse como moto porque el formato de la placa no lo permite (RI-01). | US-14 (consultar la bitácora) y el resumen del recaudo (US-15) |
 | R17 | Un administrador corrige el tipo de un vehículo que sigue dentro, por ejemplo de carro a moto, para que se cobre menos, o le cambia la placa (BR-17). | Corregir es una atribución del administrador por diseño (FR-21), sin un segundo aprobador: cada parqueadero tiene un solo responsable. | La corrección no borra ni edita: la estadía anulada conserva los datos originales, y `ESTADIA_CORREGIDA` guarda quién, cuándo y desde qué IP, con el motivo en la estadía anulada; para pasar un carro a moto también hay que cambiar la placa, porque el formato no lo permite (RI-01); un operador recibe 403 registrado; el Historial muestra la estadía anulada y su reemplazo. | US-14 (consultar la bitácora) y mostrar el motivo y el reemplazo en el Historial (backlog) |
 | R18 | Un administrador anula una estadía cerrada para quedarse con lo cobrado (BR-12). | Anular es una atribución del administrador por diseño (FR-15), sin un segundo aprobador; el operador, que es quien cobra, no puede anular (requisitos 1.3, decisión 2). | La anulación no borra nada: la estadía conserva su salida y su comprobante, con quién anuló, cuándo y el motivo, y `ESTADIA_ANULADA` guarda la IP; el consecutivo del comprobante no se reutiliza, así que un número anulado queda a la vista; un operador recibe 403 registrado; el Historial muestra la estadía anulada. | US-14 (consultar la bitácora) y el resumen del recaudo (US-15), que debe mostrar los comprobantes anulados aparte |
+| R19 | Bajo carga concurrente, `pg` 8.23.1 avisa (`DeprecationWarning`) que llamar a `client.query()` mientras el cliente ya ejecuta otra consulta dejará de funcionar en `pg` 9. Viene de `@prisma/adapter-pg` 7.10.1, no del código propio, que no lanza consultas en paralelo. | Hoy es solo un aviso: 0 errores en las 12.937 peticiones de la prueba de carga (S3-13, `docs/evaluacion.md`). | `backend/package.json` pide `pg` 8 (`^8.23.1`) y `package-lock.json` fija la versión, así que `pg` 9 no llega sin un cambio explícito. | Al actualizar Prisma o `pg`: no subir a `pg` 9 hasta que `@prisma/adapter-pg` lo soporte (backlog) |
 
 ## 9. Mantenimiento del modelo
 
 - El modelo se revisa al cierre de cada sprint (S2-18 y la revisión del Sprint 3).
 - También se actualiza cuando una historia agrega un elemento, un flujo o un
-  límite (por ejemplo, el monitoreo del Sprint 3 o un subdominio nuevo), o cuando
-  cambia un control.
+  límite (como el monitor externo y el aviso de respaldos de S3-14, o un
+  subdominio nuevo), o cuando cambia un control.
 - Cuando una historia implementa un control **Planeado**, su pull request lo pasa
   a **Implementado** y cita la tarea.
 - El documento no incluye números de cuenta, ARN, ID de recursos ni direcciones IP,
@@ -416,3 +427,4 @@ atacante (*login CSRF*).
 | 1.10 | 19 de noviembre de 2026 | S3-09 (#110), cupos por tipo de vehículo: A-19 con `POST /api/cupos` (403 registrado a un operador); A-20 con el esquema de `/api/cupos`; A-24 con `CUPO_CAMBIADO` e `INGRESO_RECHAZADO_SIN_CUPO`; riesgo residual R16 (salida falsa para liberar un cupo, o ingreso sin registro cuando no quedan cupos). |
 | 1.11 | 22 de noviembre de 2026 | S3-10 (#116), corrección de un ingreso: A-19 con `POST /api/estadias/{id}/correccion` (403 registrado a un operador; la web muestra "Corregir" solo al administrador); A-20 con el esquema estricto de la corrección; A-21: la hora de ingreso del reemplazo la copia el servidor; A-24 con `ESTADIA_CORREGIDA`; riesgo residual R17 (un administrador corrige un vehículo para cobrar menos). |
 | 1.12 | 22 de noviembre de 2026 | S3-11 (#121), anulación sin reemplazo: A-19 con `POST /api/estadias/{id}/anulacion` (403 registrado a un operador; la web muestra "Anular" solo al administrador); A-20 con el esquema estricto de la anulación; A-24 con `ESTADIA_ANULADA`; riesgo residual R18 (un administrador anula una estadía cerrada para quedarse con lo cobrado). |
+| 1.13 | 26 de noviembre de 2026 | Objetivo 4. S3-14 (#128): elemento E15 (monitor externo), flujos F17 (consulta de `/api/salud`) y F18 (aviso de respaldos fallidos), EventBridge y SNS en E11 y en el diagrama; amenazas nuevas A-54 (caída inadvertida) y A-55 (respaldo fallido sin aviso); R4 resuelto; R8 aclara que el monitor no vigila el vencimiento del certificado. S3-12 (#126): A-33 con el simulacro de restauración hecho. S3-13 (#127): riesgo residual R19 (aviso de deprecación de `pg` bajo carga) y A-48 remite a él. |

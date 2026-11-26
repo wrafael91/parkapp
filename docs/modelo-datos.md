@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
-| Versión | 1.8 — 22 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127) |
+| Versión | 1.9 — 26 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -611,9 +611,15 @@ Contar los vehículos de un tipo que están dentro (BR-19) usa el índice de RI-
 estadías en el historial y 280 motos dentro, el conteo tomó 0,07 ms en la
 simulación del 17 de noviembre de 2026, así que no se agregó un índice.
 
-Los índices para los demás filtros del historial (fechas y placa, FR-18) se
-definen en el Sprint 3 con las pruebas de carga de NFR-14, para decidirlos con
-mediciones y no por suposición.
+Los demás filtros del historial (día, placa completa o parcial y tipo de
+vehículo, FR-18) no tienen índices propios. Se decidió con la prueba de carga de
+NFR-14 (S3-13, `docs/evaluacion.md`, sección 4.4): el 26 de noviembre de 2026, en
+AWS (db.t4g.micro), con 101.762 estadías y 20 usuarios durante 5 minutos, el
+historial respondió en 57,6 ms en el percentil 95, frente a los 2 s del
+requisito. El filtro más lento, parte de una placa (hasta 500 resultados), tomó
+65,6 ms, y un día, 54,6 ms. Un índice más haría más lento cada ingreso y cada
+salida, sin una mejora que el usuario note. Se revisa si el historial pasa de un
+año de datos o si una nueva medición se acerca al límite.
 
 ## Historial de cambios
 
@@ -628,3 +634,4 @@ mediciones y no por suposición.
 | 1.6 | 19 de noviembre de 2026 | Cupos por tipo de vehículo (BR-19): entidad y tabla `cupo`, acciones `CUPO_CAMBIADO` e `INGRESO_RECHAZADO_SIN_CUPO` (18 acciones) y decisión 8 de la sección 2.4. RI-07 y RI-08 incluyen los cupos, y RI-21 es nueva. Sección 3.2 con la migración `add_capacity` e índice nuevo en la sección 4.4. S3-09 (#110) |
 | 1.7 | 22 de noviembre de 2026 | Corrección de una estadía activa (BR-17, FR-21): decisión 9 de la sección 2.4 (qué copia el reemplazo, la tarifa al cambiar de tipo, el candado y la anulación condicionada), y la decisión 8 menciona el candado de la corrección. S3-10 (#116) |
 | 1.8 | 22 de noviembre de 2026 | Anulación sin reemplazo (BR-12, FR-15): decisión 10 de la sección 2.4 (qué conserva la estadía anulada, su comprobante, el evento sin `detalle` y la anulación condicionada al estado que vio el administrador). S3-11 (#121) |
+| 1.9 | 26 de noviembre de 2026 | Sección 4.4: los filtros del historial quedan sin índices propios, decidido con la prueba de carga de NFR-14 (p95 de 57,6 ms con 101.762 estadías; `docs/evaluacion.md`). S3-13 (#127) |
