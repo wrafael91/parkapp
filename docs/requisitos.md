@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127) |
-| Versión | 1.14 — 26 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127), S3-15 (#131) |
+| Versión | 1.15 — 26 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -57,6 +57,14 @@ automatizada en la que la API responde 403.
    operador, y la primera cuenta de administrador se crea con un script de
    arranque durante el despliegue. Las cuentas no se borran, solo se desactivan,
    para que cada registro conserve la identidad de quien lo hizo (BR-02, BR-12).
+   Si nadie puede iniciar sesión como administrador (por ejemplo, porque el
+   único olvidó su contraseña), la contraseña de una cuenta de administrador
+   se restablece con un script de recuperación, que corre en el servidor por
+   Session Manager: quien lo usa demuestra su identidad al entrar a AWS con
+   MFA. El script revoca las sesiones de la cuenta, deja el evento en la
+   bitácora y la contraseña nueva debe cambiarse (decisión 4). La
+   recuperación por correo está fuera del alcance (`docs/reglas-de-negocio.md`,
+   sección 7).
 
 4. **Nadie conoce la contraseña de otro usuario.** Toda contraseña asignada por
   otra persona (al crear una cuenta, al restablecerla o con el script de
@@ -515,3 +523,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.12 | 22 de noviembre de 2026 | US-10 en dos partes: la primera (S3-10) corrige una estadía activa, y quedan pendientes anular, corregir una estadía cerrada y corregir una salida. Criterio nuevo: la corrección del tipo no se rechaza por cupos (BR-19). S3-10 (#116) |
 | 1.13 | 22 de noviembre de 2026 | US-10: la segunda parte (S3-11) anula una estadía activa o cerrada sin reemplazo (FR-15). Quedan pendientes corregir una estadía cerrada y corregir una salida. S3-11 (#121) |
 | 1.14 | 26 de noviembre de 2026 | La fila del OE4 en la matriz de trazabilidad (sección 5.1) remite a `docs/evaluacion.md`, con los resultados de la restauración, la carga y el monitoreo. El texto de los requisitos no cambia. S3-13 (#127) |
+| 1.15 | 26 de noviembre de 2026 | Decisión 3 de la sección 1.3: si nadie puede iniciar sesión como administrador, la contraseña de una cuenta de administrador se restablece con el script de recuperación por Session Manager; la recuperación por correo sigue fuera del alcance. S3-15 (#131) |

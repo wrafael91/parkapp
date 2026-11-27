@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127) |
-| Versión | 1.9 — 26 de noviembre de 2026 |
+| Tarea | S1-04 (#5), S2-23 (#71), S3-03 (#6), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127), S3-15 (#131) |
+| Versión | 1.10 — 26 de noviembre de 2026 |
 
 Este documento se deriva de los requisitos (`docs/requisitos.md`) y de las
 reglas de negocio (`docs/reglas-de-negocio.md`). Se desarrolla en tres niveles:
@@ -417,7 +417,7 @@ fallido, porque un usuario puede escribir por error su contraseña en ese campo
 | CUENTA_CREADA | ACCOUNT_CREATED | Creación de una cuenta. | FR-03, FR-19 | usuario (la cuenta creada) | — | Administrador, o el sistema (script de arranque) |
 | CUENTA_DESACTIVADA | ACCOUNT_DEACTIVATED | Desactivación de una cuenta; revoca sus sesiones. | FR-04, FR-19, NFR-04 | usuario | — | Administrador |
 | CUENTA_REACTIVADA | ACCOUNT_REACTIVATED | Reactivación de una cuenta. | FR-04, FR-19 | usuario | — | Administrador |
-| CONTRASENA_RESTABLECIDA | PASSWORD_RESET | Restablecimiento de la contraseña de un operador; revoca sus sesiones. | FR-05, FR-19, US-04 | usuario | — | Administrador |
+| CONTRASENA_RESTABLECIDA | PASSWORD_RESET | Restablecimiento de la contraseña de un operador, o de un administrador con el script de recuperación; revoca sus sesiones. | FR-05, FR-19, US-04 | usuario | — | Administrador, o el sistema (script de recuperación) |
 | CONTRASENA_CAMBIADA | PASSWORD_CHANGED | Cambio de la propia contraseña, incluido el cambio obligatorio de RI-16. | FR-06, FR-19 | usuario | — | Operador o administrador |
 
 El bloqueo de NFR-03 cuenta solo los eventos `INICIO_SESION_FALLIDO` con motivo
@@ -635,3 +635,4 @@ año de datos o si una nueva medición se acerca al límite.
 | 1.7 | 22 de noviembre de 2026 | Corrección de una estadía activa (BR-17, FR-21): decisión 9 de la sección 2.4 (qué copia el reemplazo, la tarifa al cambiar de tipo, el candado y la anulación condicionada), y la decisión 8 menciona el candado de la corrección. S3-10 (#116) |
 | 1.8 | 22 de noviembre de 2026 | Anulación sin reemplazo (BR-12, FR-15): decisión 10 de la sección 2.4 (qué conserva la estadía anulada, su comprobante, el evento sin `detalle` y la anulación condicionada al estado que vio el administrador). S3-11 (#121) |
 | 1.9 | 26 de noviembre de 2026 | Sección 4.4: los filtros del historial quedan sin índices propios, decidido con la prueba de carga de NFR-14 (p95 de 57,6 ms con 101.762 estadías; `docs/evaluacion.md`). S3-13 (#127) |
+| 1.10 | 26 de noviembre de 2026 | Catálogo de acciones de auditoría (4.1): `CONTRASENA_RESTABLECIDA` también la dispara el sistema, cuando el script de recuperación restablece la contraseña de un administrador. S3-15 (#131) |

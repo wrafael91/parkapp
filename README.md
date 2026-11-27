@@ -114,3 +114,18 @@ unset RP_DB
 Each run creates a new version of the three values and closes the current ones; vehicles already inside keep the values they entered with (BR-11). If one value is rejected, nothing changes. Each change is recorded in the audit log as `TARIFA_CAMBIADA` or `PERIODO_GRACIA_CAMBIADO`.
 
 The fee cap per period (BR-18) has no bootstrap script: an administrator turns it on, changes it or turns it off from the Rates screen. Until then, stays are charged by the minute.
+
+## Reset an administrator's password
+
+If nobody can sign in as an administrator (for example, because the only one forgot the password), a recovery script sets a new password for an administrator account. It runs like the bootstrap scripts: on the server, through Session Manager (an AWS sign-in with MFA), in `/opt/parkapp/current`, with the `parkapp_app` database URL, and the password goes through standard input. An administrator resets an operator's password from the app (FR-05), so the script refuses operator accounts. Recovery by email is out of scope (`docs/reglas-de-negocio.md`, section 7).
+
+```bash
+RP_DB="$(aws ssm get-parameter --name /parkapp/prod/db/url-app --with-decryption --query Parameter.Value --output text --region us-east-1)"
+read -rs -p "New password: " RP_PASSWORD; echo
+read -rs -p "Repeat it: " RP_PASSWORD2; echo
+[ "$RP_PASSWORD" = "$RP_PASSWORD2" ] && echo "They match" || echo "They do NOT match"
+printf '%s' "$RP_PASSWORD" | DATABASE_URL="$RP_DB" node dist/scripts/reset-admin-password.js <email>
+unset RP_PASSWORD RP_PASSWORD2 RP_DB
+```
+
+The new password must have 15 to 64 characters (NFR-02), and the account must change it on its next sign-in (RI-16). The script also ends the account's open sessions (NFR-04) and records `CONTRASENA_RESTABLECIDA` in the audit log as a system event, without user or IP. If the password, the email or the account is rejected, nothing changes.
