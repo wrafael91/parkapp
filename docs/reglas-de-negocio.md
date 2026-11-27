@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121) |
-| Versión | 1.12 — 22 de noviembre de 2026 |
+| Tarea | S1-02 (#3), S1-02b (#15), S1-03 (#4), S1-04 (#5), S2-23 (#71), S3-04 (#14), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-15 (#131) |
+| Versión | 1.13 — 26 de noviembre de 2026 |
 
 ## 1. Propósito
 
@@ -196,7 +196,7 @@ Anulaciones sin reemplazo. Estos casos se convierten en pruebas en S3-11.
 | Publicación física de tarifas en el establecimiento | Obligación del operador (Decreto 652/2025, art. 200, par. 5). |
 | Placas extranjeras y diplomáticas | El registro valida el formato de placa colombiana (FR-08). |
 | Registro del medio de pago (efectivo o tarjeta) | RoloPark calcula y registra el valor a cobrar, pero no procesa pagos: el pago se recibe fuera del sistema. El resumen de recaudo (FR-20) totaliza por operador sin distinguir el medio de pago. Queda en el backlog del producto. |
-| Recuperación de contraseña por correo | Requiere un servicio de correo y amplía la superficie de ataque. El administrador restablece las contraseñas (FR-05). |
+| Recuperación de contraseña por correo | Requiere un servicio de correo y amplía la superficie de ataque con un formulario público. El administrador restablece la contraseña de un operador (FR-05), y la de un administrador se restablece con el script de recuperación, que corre en el servidor por Session Manager, con MFA (`docs/requisitos.md`, sección 1.3, decisión 3). Queda en el backlog del producto (decisión del Product Owner del 26 de noviembre de 2026). |
 
 ## 8. Glosario
 
@@ -276,3 +276,4 @@ https://sedeelectronica.sic.gov.co/transparencia/normativa/concepto-17-69998-del
 | 1.10 | 19 de noviembre de 2026 | BR-19: cupos por tipo de vehículo, calculados con las estadías activas, con el ingreso rechazado cuando no quedan. Ejemplos 14 a 20 y supuesto de BR-19 en la sección 6. Actores y glosario con los cupos. (#110) |
 | 1.11 | 22 de noviembre de 2026 | BR-19: corregir el tipo de un vehículo que ya está dentro no se rechaza por cupos. Ejemplos 21 a 24 de la corrección de una estadía activa (BR-17). (#116) |
 | 1.12 | 22 de noviembre de 2026 | Ejemplos 25 a 27 de la anulación sin reemplazo de una estadía activa o cerrada (BR-12). (#121) |
+| 1.13 | 26 de noviembre de 2026 | Sección 7: la recuperación de contraseña por correo sigue fuera del alcance y queda en el backlog del producto; la contraseña de un administrador se restablece con el script de recuperación. (#131) |

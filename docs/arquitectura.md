@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71), S3-02 (#69), S3-12 (#126), S3-13 (#127), S3-14 (#128) |
-| Versión | 1.8 — 26 de noviembre de 2026 |
+| Tarea | S1-06 (#7), S2-14 (#43), S2-20 (#60), S2-21 (#64), S2-23 (#71), S3-02 (#69), S3-12 (#126), S3-13 (#127), S3-14 (#128), S3-15 (#131) |
+| Versión | 1.9 — 26 de noviembre de 2026 |
 
 Este documento describe la arquitectura de RoloPark con el modelo C4 (contexto,
 contenedores y componentes) y una vista de despliegue en AWS. Las decisiones
@@ -372,7 +372,7 @@ Permisos de `parkapp_app` (migración `grant_app_privileges`):
 
 En RDS, el usuario maestro recibió el rol `parkapp_migrator` (`GRANT parkapp_migrator TO <maestro>`), que PostgreSQL 16 exige para que el maestro pueda asignarle la base de datos. La base no concede permisos a PUBLIC: solo `parkapp_migrator` puede conectarse, crear y usar tablas temporales, y `parkapp_app` solo puede conectarse.
 
-Los datos iniciales (la primera cuenta de administrador, la tarifa y el periodo de gracia de un ambiente nuevo) se cargan con los scripts de arranque de `backend/src/scripts/`, que corren en el servidor por Session Manager y se conectan como `parkapp_app`, nunca como el maestro. La contraseña llega por la entrada estándar, de modo que no queda en el historial ni en la lista de procesos.
+Los datos iniciales (la primera cuenta de administrador, la tarifa y el periodo de gracia de un ambiente nuevo) se cargan con los scripts de arranque de `backend/src/scripts/`, que corren en el servidor por Session Manager y se conectan como `parkapp_app`, nunca como el maestro. La contraseña llega por la entrada estándar, de modo que no queda en el historial ni en la lista de procesos. Si nadie puede iniciar sesión como administrador, el script de recuperación (`reset-admin-password.js`) restablece la contraseña de una cuenta de administrador de la misma forma: revoca las sesiones de la cuenta y registra `CONTRASENA_RESTABLECIDA` como evento del sistema (requisitos 1.3, decisión 3).
 
 Ninguna tabla concede DELETE, y las tablas con INSERT conceden USAGE sobre sus secuencias. Cada migración que cree una tabla incluye sus GRANT; no se usa ALTER DEFAULT PRIVILEGES. Una prueba falla si alguna tabla del esquema no concede SELECT a `parkapp_app`, o si `_prisma_migrations` le concede algún permiso.
 
@@ -475,3 +475,4 @@ de amenazas de S1-07 (ADR 0003).
 | 1.6 | 12 de noviembre de 2026 | ADR 0010: RoloPark es el nombre visible del producto y los identificadores internos siguen como `parkapp` (secciones 2 a 4). Enlace al modelo de amenazas en la sección 7. (#71) |
 | 1.7 | 14 de noviembre de 2026 | Detalles de la implementación de S2-04 a S2-08 y S2-10: endurecimiento del servidor y de systemd, certificados de las conexiones a la base, zona horaria UTC, contraseña del maestro, dominio, renovación del certificado y dos acciones de Budgets (6.2); configuración de Nginx (6.3); rol de Budgets (6.4); permisos de la base y scripts de arranque (6.5); jobs, artefacto y documento de despliegue (6.6). ADR 0004, 0005 y 0006 actualizados. S3-02 (#69) |
 | 1.8 | 26 de noviembre de 2026 | Sección 6.7 con los resultados del objetivo 4: monitor externo (NFR-16) y aviso de fallos de los respaldos (S3-14); procedimiento de restauración probado en el simulacro, con el renombre en lugar de cambiar la dirección de la base en `/parkapp/prod/`, las dos vías y sus tiempos, y el cupo de 2 instancias del plan gratuito (S3-12); nota de capacidad con el cuello de botella en saturación (S3-13). Resultados en `docs/evaluacion.md`. S3-12 (#126), S3-13 (#127) y S3-14 (#128) |
+| 1.9 | 26 de noviembre de 2026 | Sección 6.5: el script de recuperación restablece la contraseña de una cuenta de administrador por Session Manager, con `parkapp_app`. S3-15 (#131) |
