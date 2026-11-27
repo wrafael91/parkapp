@@ -1,5 +1,5 @@
 import type { Prisma } from "../../generated/prisma/client.js";
-import { hashPassword } from "./password.js";
+import { hashPassword, isAcceptableLength } from "./password.js";
 
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
@@ -11,7 +11,8 @@ interface ResetAdministratorPasswordInput {
 }
 
 export type ResetAdministratorPasswordResult =
-  { ok: true; userId: number } | { ok: false; reason: "notFound" };
+  | { ok: true; userId: number }
+  | { ok: false; reason: "passwordLength" | "notFound" | "notAdministrator" };
 
 // The recovery script resets an administrator's password when nobody can sign
 // in as one: an operator's password is reset from the app (FR-05). Whoever runs
@@ -21,11 +22,20 @@ export async function resetAdministratorPassword(
   db: Db,
   input: ResetAdministratorPasswordInput,
 ): Promise<ResetAdministratorPasswordResult> {
+  // NFR-02: from 15 to 64 characters. The leaked password list comes with #50.
+  if (!isAcceptableLength(input.password)) {
+    return { ok: false, reason: "passwordLength" };
+  }
   // RI-15: emails are stored and looked up in lowercase, without spaces.
   const email = input.email.trim().toLowerCase();
   const user = await db.user.findUnique({ where: { email } });
   if (user === null) {
     return { ok: false, reason: "notFound" };
+  }
+  // An administrator resets an operator's password from the app (FR-05,
+  // US-04), with his user and IP in the audit log.
+  if (user.role !== "ADMINISTRATOR") {
+    return { ok: false, reason: "notAdministrator" };
   }
   await db.user.update({
     where: { id: user.id },
