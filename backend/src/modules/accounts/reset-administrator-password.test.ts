@@ -146,3 +146,38 @@ describe("resetAdministratorPassword (recovery script, RI-16)", () => {
     });
   });
 });
+
+describe("resetAdministratorPassword rejects", () => {
+  it.each([
+    ["shorter than 15", "a".repeat(14)],
+    ["longer than 64", "a".repeat(65)],
+  ])("a password %s characters and changes nothing (NFR-02)", async (_case, password) => {
+    await asApp(async (db) => {
+      const admin = await account(db, EMAIL, "ADMINISTRATOR");
+      const open = await openSession(db, admin.id, "hash-de-prueba-abierta");
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await resetAdministratorPassword(db, { ...INPUT, password });
+
+      expect(result).toEqual({ ok: false, reason: "passwordLength" });
+      expect(await db.user.findUniqueOrThrow({ where: { id: admin.id } })).toEqual(admin);
+      expect((await db.session.findUniqueOrThrow({ where: { id: open.id } })).revokedAt).toBeNull();
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+
+  it("an operator account, whose password an administrator resets from the app (FR-05)", async () => {
+    await asApp(async (db) => {
+      const operator = await account(db, "operador.recuperacion@example.com", "OPERATOR");
+      const open = await openSession(db, operator.id, "hash-de-prueba-del-operador");
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await resetAdministratorPassword(db, { ...INPUT, email: operator.email });
+
+      expect(result).toEqual({ ok: false, reason: "notAdministrator" });
+      expect(await db.user.findUniqueOrThrow({ where: { id: operator.id } })).toEqual(operator);
+      expect((await db.session.findUniqueOrThrow({ where: { id: open.id } })).revokedAt).toBeNull();
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+});
