@@ -71,6 +71,7 @@ async function signedInOperator(db: Prisma.TransactionClient) {
       email: "operador.rutas@example.com",
       passwordHash: "not-a-real-hash",
       role: "OPERATOR",
+      mustChangePassword: false,
     },
   });
   const now = new Date();
@@ -333,6 +334,7 @@ describe("GET /api/estadias?estado=ACTIVA (FR-10, US-07)", () => {
           email: "admin.rutas@example.com",
           passwordHash: "not-a-real-hash",
           role: "ADMINISTRATOR",
+          mustChangePassword: false,
         },
       });
       const start = Date.now();
@@ -448,6 +450,7 @@ async function signedInAdministrator(db: Prisma.TransactionClient) {
       email: "admin.historial@example.com",
       passwordHash: "not-a-real-hash",
       role: "ADMINISTRATOR",
+      mustChangePassword: false,
     },
   });
   await db.session.create({

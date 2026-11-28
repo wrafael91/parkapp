@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Proyecto | RoloPark — Sistema de Gestión de Parqueaderos |
-| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127), S3-15 (#131) |
-| Versión | 1.15 — 26 de noviembre de 2026 |
+| Tarea | S1-03 (#4), S1-04 (#5), S1-10 (#11), #25, S2-15 (#44), S2-23 (#71), S3-01 (#45), S3-04 (#14), S3-05 (#49), S3-07 (#105), S3-08 (#106), S3-09 (#110), S3-10 (#116), S3-11 (#121), S3-13 (#127), S3-15 (#131), S3-16 (#134) |
+| Versión | 1.16 — 27 de noviembre de 2026 |
 
 Este documento se deriva de las reglas de negocio (`docs/reglas-de-negocio.md`).
 Cada requisito se traza a las reglas BR-XX que lo originan.
@@ -67,10 +67,13 @@ automatizada en la que la API responde 403.
    sección 7).
 
 4. **Nadie conoce la contraseña de otro usuario.** Toda contraseña asignada por
-  otra persona (al crear una cuenta, al restablecerla o con el script de
-  arranque) debe cambiarse en el primer inicio de sesión. Si el administrador
-  conociera la contraseña de un operador, podría actuar en su nombre, y se
-  perdería la trazabilidad de quién hizo cada registro.
+   otra persona (al crear una cuenta, al restablecerla o con los scripts de
+   arranque y de recuperación) debe cambiarse en el primer inicio de sesión,
+   antes de cualquier otra acción: mientras el cambio esté pendiente, la API
+   solo deja consultar la sesión, cerrarla y cambiar la contraseña (RI-16). La
+   contraseña nueva debe ser distinta de la asignada. Si el administrador
+   conociera la contraseña de un operador, podría actuar en su nombre, y se
+   perdería la trazabilidad de quién hizo cada registro.
 
 5. **El operador también consulta el historial.** Es quien está en el
    parqueadero cuando un cliente pierde el tiquete o reclama por una estadía
@@ -253,9 +256,9 @@ persona opere con su propia identidad.
 - **Dado** que soy operador, **cuando** intento crear una cuenta, **entonces** la API responde 403.
 
 En el Sprint 3 (S3-07), la cuenta se crea con el cambio de contraseña pendiente
-(RI-16); exigirlo antes de cualquier otra acción llega con US-05, que trae la
-pantalla para cambiarla, y el rechazo de las contraseñas filtradas de NFR-02
-llega con el endurecimiento del inicio de sesión. Desde la aplicación solo se
+(RI-16), y desde S3-16 (US-05) el sistema exige cambiarla antes de cualquier
+otra acción. El rechazo de las contraseñas filtradas de NFR-02 llega con el
+endurecimiento del inicio de sesión. Desde la aplicación solo se
 crean cuentas de operador: las de administrador las crea el script de arranque
 (decisión 3 de la sección 1.3).
 
@@ -283,8 +286,15 @@ cortar su acceso sin perder el rastro de sus registros.
 
 **Como** operador o administrador, **quiero** cambiar mi contraseña **para** mantener mi cuenta segura.
 
-- **Dado** que ingreso mi contraseña actual y una nueva válida, **cuando** confirmo, **entonces** la contraseña cambia.
-- **Dado** que la contraseña actual es incorrecta, **cuando** confirmo, **entonces** el cambio se rechaza.
+- **Dado** que ingreso mi contraseña actual y una nueva válida, **cuando** confirmo, **entonces** la contraseña cambia, mis demás sesiones se cierran y la sesión desde la que la cambié sigue abierta.
+- **Dado** que la contraseña actual es incorrecta, **cuando** confirmo, **entonces** el cambio se rechaza y mi sesión sigue abierta.
+- **Dado** una contraseña nueva de menos de 15 o más de 64 caracteres, o igual a la actual, **cuando** confirmo, **entonces** el cambio se rechaza (NFR-02, RI-16).
+- **Dado** que mi contraseña fue asignada por otra persona, **cuando** inicio sesión, **entonces** el sistema me exige cambiarla antes de permitir cualquier otra acción; solo puedo cambiarla o cerrar sesión (RI-16, sección 1.3, decisión 4).
+
+Que la contraseña nueva sea distinta de la actual no es una regla de
+composición (NFR-02): si fuera la misma, quien la asignó la seguiría
+conociendo. La lista de contraseñas filtradas, que también aplicará a la
+contraseña nueva, llega con el endurecimiento del inicio de sesión.
 
 #### US-06 Registrar el ingreso de un vehículo
 
@@ -524,3 +534,4 @@ OWASP Foundation. (2025). *OWASP Application Security Verification Standard
 | 1.13 | 22 de noviembre de 2026 | US-10: la segunda parte (S3-11) anula una estadía activa o cerrada sin reemplazo (FR-15). Quedan pendientes corregir una estadía cerrada y corregir una salida. S3-11 (#121) |
 | 1.14 | 26 de noviembre de 2026 | La fila del OE4 en la matriz de trazabilidad (sección 5.1) remite a `docs/evaluacion.md`, con los resultados de la restauración, la carga y el monitoreo. El texto de los requisitos no cambia. S3-13 (#127) |
 | 1.15 | 26 de noviembre de 2026 | Decisión 3 de la sección 1.3: si nadie puede iniciar sesión como administrador, la contraseña de una cuenta de administrador se restablece con el script de recuperación por Session Manager; la recuperación por correo sigue fuera del alcance. S3-15 (#131) |
+| 1.16 | 27 de noviembre de 2026 | US-05: criterios del cambio de la propia contraseña (cierra las demás sesiones, longitud, distinta de la actual) y del cambio obligatorio antes de cualquier otra acción (RI-16). Decisión 4 de la sección 1.3: qué permite la API mientras el cambio está pendiente, e incluye el script de recuperación. US-02: el cambio obligatorio ya existe. S3-16 (#134) |

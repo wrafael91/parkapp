@@ -81,6 +81,7 @@ async function carInside(
       email: "operador.salida@example.com",
       passwordHash: "not-a-real-hash",
       role: "OPERATOR",
+      mustChangePassword: false,
     },
   });
   await db.session.create({
