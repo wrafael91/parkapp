@@ -1,5 +1,6 @@
 import type { Prisma } from "../../generated/prisma/client.js";
-import { hashPassword, isAcceptableLength } from "./password.js";
+import { isAcceptableLength } from "./password.js";
+import { applyPasswordReset } from "./password-reset.js";
 
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
@@ -37,30 +38,13 @@ export async function resetAdministratorPassword(
   if (user.role !== "ADMINISTRATOR") {
     return { ok: false, reason: "notAdministrator" };
   }
-  await db.user.update({
-    where: { id: user.id },
-    data: {
-      passwordHash: await hashPassword(input.password),
-      // RI-16: whoever runs the script knows the password, so it must change.
-      mustChangePassword: true,
-      // A lock for failed sign-ins (NFR-03) does not outlast a reset.
-      lockedUntil: null,
-    },
-  });
-  // NFR-04: the sessions opened with the old password end now.
-  await db.session.updateMany({
-    where: { userId: user.id, revokedAt: null },
-    data: { revokedAt: input.now },
-  });
   // The system resets it, not a person signed in to the app, so the event has
-  // no user and no IP (RI-18). It never stores the password (RI-14).
-  await db.auditEvent.create({
-    data: {
-      action: "PASSWORD_RESET",
-      entity: "usuario",
-      entityId: user.id,
-      occurredAt: input.now,
-    },
+  // no user and no IP (RI-18).
+  await applyPasswordReset(db, {
+    userId: user.id,
+    password: input.password,
+    now: input.now,
+    resetBy: null,
   });
   return { ok: true, userId: user.id };
 }
