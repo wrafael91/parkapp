@@ -7,7 +7,11 @@ import { jsonResponse, stubFetch } from "./test-helpers.ts";
 // The API's answers (ADR 0008). findBy* and getBy* fail when the element is
 // missing, so they are assertions too.
 const ACTIVE_SESSION = {
-  usuario: { id: 1, nombre: "Ana Pérez", rol: "ADMINISTRADOR", debeCambiarContrasena: true },
+  usuario: { id: 1, nombre: "Ana Pérez", rol: "ADMINISTRADOR", debeCambiarContrasena: false },
+};
+// A password someone else assigned, not changed yet (RI-16).
+const PENDING_SESSION = {
+  usuario: { ...ACTIVE_SESSION.usuario, debeCambiarContrasena: true },
 };
 const NO_SESSION = { error: { codigo: "NO_AUTENTICADO", mensaje: "No hay una sesión activa." } };
 const WRONG_CREDENTIALS = {
@@ -351,5 +355,110 @@ describe("sections (matrix 1.2)", () => {
 
     await screen.findByRole("heading", { name: "Registrar ingreso" });
     expect(screen.queryByRole("heading", { name: "Historial" })).toBeNull();
+  });
+});
+
+describe("password change (US-05, RI-16)", () => {
+  const MANDATORY = "Tu contraseña fue asignada por otra persona. Cámbiala para continuar.";
+
+  // Fills in the change form and submits it, as a person would.
+  async function changePassword(user: UserEvent) {
+    await user.type(await screen.findByLabelText("Contraseña actual"), "la contraseña asignada");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "una frase que solo yo conozco");
+    await user.type(
+      screen.getByLabelText("Repite la contraseña nueva"),
+      "una frase que solo yo conozco",
+    );
+    await user.click(screen.getByRole("button", { name: "Cambiar contraseña" }));
+  }
+
+  it("asks for the change before anything else when it is pending", async () => {
+    const fetchMock = stubFetch(jsonResponse(200, PENDING_SESSION));
+    render(<App />);
+    await screen.findByRole("heading", { name: "Cambiar contraseña" });
+    screen.getByText(MANDATORY);
+    screen.getByText("Sesión iniciada: Ana Pérez");
+    screen.getByRole("button", { name: "Cerrar sesión" });
+    expect(screen.queryByRole("navigation", { name: "Secciones" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mi contraseña" })).toBeNull();
+    // Only GET /api/sesion: the vehicles inside are not asked for.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for it right after signing in with an assigned password", async () => {
+    stubFetch(jsonResponse(401, NO_SESSION), jsonResponse(200, PENDING_SESSION));
+    const user = userEvent.setup();
+    render(<App />);
+    await signIn(user);
+    await screen.findByText(MANDATORY);
+    expect(screen.queryByRole("navigation", { name: "Secciones" })).toBeNull();
+  });
+
+  it("shows the sections of the role once the password changed", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(200, PENDING_SESSION),
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await changePassword(user);
+
+    await screen.findByText("No hay vehículos dentro.");
+    screen.getByRole("navigation", { name: "Secciones" });
+    expect(screen.queryByRole("heading", { name: "Cambiar contraseña" })).toBeNull();
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/sesion/contrasena");
+  });
+
+  it("lets a user with the change pending sign out", async () => {
+    stubFetch(jsonResponse(200, PENDING_SESSION), new Response(null, { status: 204 }));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText(MANDATORY);
+
+    await user.click(screen.getByRole("button", { name: "Cerrar sesión" }));
+
+    await screen.findByRole("button", { name: "Iniciar sesión" });
+  });
+
+  it("goes back to the sign-in form when the session ended before the change", async () => {
+    stubFetch(jsonResponse(200, PENDING_SESSION), jsonResponse(401, NO_SESSION));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await changePassword(user);
+
+    await screen.findByRole("button", { name: "Iniciar sesión" });
+  });
+
+  it("opens the change from the top bar, and stays there after it", async () => {
+    stubFetch(
+      jsonResponse(200, ACTIVE_SESSION),
+      jsonResponse(200, NO_STAYS),
+      jsonResponse(200, NO_SPACES),
+      jsonResponse(200, ACTIVE_SESSION),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    const sections = await screen.findByRole("navigation", { name: "Secciones" });
+    await screen.findByText("No hay vehículos dentro.");
+    const mine = screen.getByRole("button", { name: "Mi contraseña" });
+
+    await user.click(mine);
+
+    screen.getByRole("heading", { name: "Cambiar contraseña" });
+    expect(screen.queryByText(MANDATORY)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Registrar ingreso" })).toBeNull();
+    expect(mine.getAttribute("aria-current")).toBe("page");
+    const operation = within(sections).getByRole("button", { name: "Operación" });
+    expect(operation.getAttribute("aria-current")).toBeNull();
+
+    await changePassword(user);
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toBe("Contraseña cambiada. Tus otras sesiones se cerraron.");
+    screen.getByRole("heading", { name: "Cambiar contraseña" });
   });
 });
