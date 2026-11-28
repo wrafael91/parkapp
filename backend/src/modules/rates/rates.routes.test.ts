@@ -70,6 +70,7 @@ async function signedIn(db: Prisma.TransactionClient, role: Role) {
       email: "rutas.tarifas@example.com",
       passwordHash: "not-a-real-hash",
       role,
+      mustChangePassword: false,
     },
   });
   await db.session.create({

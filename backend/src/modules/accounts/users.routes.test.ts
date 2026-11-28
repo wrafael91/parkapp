@@ -63,6 +63,7 @@ async function signedIn(db: Prisma.TransactionClient, role: Role) {
       email: "rutas.cuentas@example.com",
       passwordHash: "not-a-real-hash",
       role,
+      mustChangePassword: false,
     },
   });
   await db.session.create({
@@ -311,6 +312,8 @@ async function operatorSignedIn(db: Prisma.TransactionClient, adminId: number) {
     createdBy: { userId: adminId, ip: IP },
   });
   if (!created.ok) throw new Error("setup failed");
+  // As if the operator had already changed the initial password (RI-16).
+  await db.user.update({ where: { id: created.userId }, data: { mustChangePassword: false } });
   await db.session.create({
     data: {
       userId: created.userId,
@@ -478,6 +481,7 @@ describe("POST /api/usuarios/{id}/estado (US-03, FR-04)", () => {
           email: "otro.rutas@example.com",
           passwordHash: "not-a-real-hash",
           role: "OPERATOR",
+          mustChangePassword: false,
         },
       });
 

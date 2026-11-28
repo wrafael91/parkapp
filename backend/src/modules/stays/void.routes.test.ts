@@ -73,6 +73,7 @@ async function setUp(db: Prisma.TransactionClient, role: Role) {
       email: "usuario.anulacion@example.com",
       passwordHash: "not-a-real-hash",
       role,
+      mustChangePassword: false,
     },
   });
   await db.session.create({
@@ -89,6 +90,7 @@ async function setUp(db: Prisma.TransactionClient, role: Role) {
       email: "operador.ingreso.anulacion@example.com",
       passwordHash: "not-a-real-hash",
       role: "OPERATOR",
+      mustChangePassword: false,
     },
   });
   const ratesFrom = minutesFromNow(-60);

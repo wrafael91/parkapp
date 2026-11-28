@@ -75,6 +75,7 @@ async function setUp(
       email: "usuario.correccion@example.com",
       passwordHash: "not-a-real-hash",
       role,
+      mustChangePassword: false,
     },
   });
   await db.session.create({
@@ -91,6 +92,7 @@ async function setUp(
       email: "operador.ingreso.correccion@example.com",
       passwordHash: "not-a-real-hash",
       role: "OPERATOR",
+      mustChangePassword: false,
     },
   });
   const ratesFrom = minutesFromNow(-60);
