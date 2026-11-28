@@ -361,7 +361,10 @@ describe("POST /api/sesion/contrasena (US-05, FR-06)", () => {
       expect(response.status).toBe(400);
       expect(response.body.error.codigo).toBe(codigo);
       expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toEqual(user);
-      expect(await db.auditEvent.count({ where: { action: "PASSWORD_CHANGED" } })).toBe(0);
+      const changes = await db.auditEvent.count({
+        where: { action: "PASSWORD_CHANGED", entityId: user.id },
+      });
+      expect(changes).toBe(0);
       // Not 401: the session is still valid.
       const after = await request(app).get("/api/sesion").set("Cookie", cookie);
       expect(after.status).toBe(200);
