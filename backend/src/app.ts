@@ -5,6 +5,7 @@ import { requireAllowedOrigin } from "./middleware/origin.js";
 import { createSessionRouter } from "./modules/accounts/session.routes.js";
 import { createUsersRouter } from "./modules/accounts/users.routes.js";
 import { createCapacityRouter } from "./modules/capacity/capacity.routes.js";
+import { rejectPendingPasswordChange } from "./modules/accounts/pending-password-change.js";
 import { createHealthRouter } from "./modules/health/health.routes.js";
 import {
   createGracePeriodRouter,
@@ -29,6 +30,8 @@ export function createApp(prisma: PrismaClient, options: AppOptions): Express {
   app.use(express.json({ limit: "10kb" }));
   app.use("/api/salud", createHealthRouter(prisma));
   app.use("/api/sesion", createSessionRouter(prisma));
+  // RI-16: everything below waits until an assigned password is changed.
+  app.use("/api", rejectPendingPasswordChange(prisma));
   app.use("/api/estadias", createStaysRouter(prisma));
   app.use("/api/tarifas", createRatesRouter(prisma));
   app.use("/api/periodo-gracia", createGracePeriodRouter(prisma));
