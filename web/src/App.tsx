@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
 import Accounts from "./Accounts.tsx";
+import ChangePassword from "./ChangePassword.tsx";
 import History from "./History.tsx";
 import Rates from "./Rates.tsx";
 import Stays from "./Stays.tsx";
@@ -11,7 +12,11 @@ import Stays from "./Stays.tsx";
 const SESSION_URL = "/api/sesion";
 
 // The part of the API's usuario that the page uses (ADR 0008).
-type Usuario = { nombre: string; rol: "ADMINISTRADOR" | "OPERADOR" };
+type Usuario = {
+  nombre: string;
+  rol: "ADMINISTRADOR" | "OPERADOR";
+  debeCambiarContrasena: boolean;
+};
 
 type Session =
   | { status: "checking" }
@@ -41,7 +46,13 @@ export default function App() {
   }, []);
 
   if (session.status === "signedIn") {
-    return <SignedIn user={session.user} onSignedOut={() => setSession({ status: "signedOut" })} />;
+    return (
+      <SignedIn
+        user={session.user}
+        onUserChanged={(user) => setSession({ status: "signedIn", user })}
+        onSignedOut={() => setSession({ status: "signedOut" })}
+      />
+    );
   }
 
   return (
@@ -128,9 +139,17 @@ function SignInForm({ onSignedIn }: { onSignedIn: (user: Usuario) => void }) {
   );
 }
 
-type Section = "operation" | "history" | "rates" | "accounts";
+type Section = "operation" | "history" | "rates" | "accounts" | "password";
 
-function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => void }) {
+function SignedIn({
+  user,
+  onUserChanged,
+  onSignedOut,
+}: {
+  user: Usuario;
+  onUserChanged: (user: Usuario) => void;
+  onSignedOut: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState<Section>("operation");
 
@@ -145,52 +164,77 @@ function SignedIn({ user, onSignedOut }: { user: Usuario; onSignedOut: () => voi
     setError("No se pudo cerrar la sesión. Intenta de nuevo.");
   }
 
+  // RI-16: a password someone else assigned is changed before anything else.
+  // The server rejects every other request until then.
+  const mustChange = user.debeCambiarContrasena;
+
   return (
     <>
       <TopBar
         nav={
-          // Matrix 1.2: both roles operate and read the history; only an
-          // administrator configures the rates and manages the accounts. The API
-          // checks the role anyway (NFR-05).
-          <nav className="topbar-nav" aria-label="Secciones">
-            <SectionButton current={section} section="operation" onSelect={setSection}>
-              Operación
-            </SectionButton>
-            <SectionButton current={section} section="history" onSelect={setSection}>
-              Historial
-            </SectionButton>
-            {user.rol === "ADMINISTRADOR" && (
-              <>
-                <SectionButton current={section} section="rates" onSelect={setSection}>
-                  Tarifas
-                </SectionButton>
-                <SectionButton current={section} section="accounts" onSelect={setSection}>
-                  Cuentas
-                </SectionButton>
-              </>
-            )}
-          </nav>
+          !mustChange && (
+            // Matrix 1.2: both roles operate and read the history; only an
+            // administrator configures the rates and manages the accounts. The API
+            // checks the role anyway (NFR-05).
+            <nav className="topbar-nav" aria-label="Secciones">
+              <SectionButton current={section} section="operation" onSelect={setSection}>
+                Operación
+              </SectionButton>
+              <SectionButton current={section} section="history" onSelect={setSection}>
+                Historial
+              </SectionButton>
+              {user.rol === "ADMINISTRADOR" && (
+                <>
+                  <SectionButton current={section} section="rates" onSelect={setSection}>
+                    Tarifas
+                  </SectionButton>
+                  <SectionButton current={section} section="accounts" onSelect={setSection}>
+                    Cuentas
+                  </SectionButton>
+                </>
+              )}
+            </nav>
+          )
         }
       >
         <p>Sesión iniciada: {user.nombre}</p>
+        {!mustChange && (
+          <button
+            type="button"
+            className="button-on-dark"
+            aria-current={section === "password" ? "page" : undefined}
+            onClick={() => setSection("password")}
+          >
+            Mi contraseña
+          </button>
+        )}
         <button type="button" className="button-on-dark" onClick={handleSignOut}>
           Cerrar sesión
         </button>
       </TopBar>
-      <main className="page">
+      <main className={mustChange || section === "password" ? "page page-centered" : "page"}>
         {error && (
           <p role="alert" className="alert">
             {error}
           </p>
         )}
-        {section === "operation" && (
-          <Stays onSessionEnded={onSignedOut} canCorrect={user.rol === "ADMINISTRADOR"} />
+        {mustChange ? (
+          <ChangePassword mandatory onChanged={onUserChanged} onSessionEnded={onSignedOut} />
+        ) : (
+          <>
+            {section === "operation" && (
+              <Stays onSessionEnded={onSignedOut} canCorrect={user.rol === "ADMINISTRADOR"} />
+            )}
+            {section === "history" && (
+              <History onSessionEnded={onSignedOut} canVoid={user.rol === "ADMINISTRADOR"} />
+            )}
+            {section === "rates" && <Rates onSessionEnded={onSignedOut} />}
+            {section === "accounts" && <Accounts onSessionEnded={onSignedOut} />}
+            {section === "password" && (
+              <ChangePassword onChanged={onUserChanged} onSessionEnded={onSignedOut} />
+            )}
+          </>
         )}
-        {section === "history" && (
-          <History onSessionEnded={onSignedOut} canVoid={user.rol === "ADMINISTRADOR"} />
-        )}
-        {section === "rates" && <Rates onSessionEnded={onSignedOut} />}
-        {section === "accounts" && <Accounts onSessionEnded={onSignedOut} />}
       </main>
     </>
   );
