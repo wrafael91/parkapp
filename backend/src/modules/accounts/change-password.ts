@@ -1,4 +1,6 @@
 import type { Prisma } from "../../generated/prisma/client.js";
+import { hashPassword } from "./password.js";
+import { hashSessionToken } from "./session-token.js";
 
 // Receives the transaction it runs in, like the session service.
 type Db = Prisma.TransactionClient;
@@ -15,9 +17,36 @@ interface ChangeOwnPasswordInput {
 
 export type ChangeOwnPasswordResult = { ok: true };
 
+// US-05, FR-06: a signed-in user changes his own password, including the
+// mandatory change of a password someone else assigned (RI-16).
 export async function changeOwnPassword(
-  _db: Db,
-  _input: ChangeOwnPasswordInput,
+  db: Db,
+  input: ChangeOwnPasswordInput,
 ): Promise<ChangeOwnPasswordResult> {
-  throw new Error("Not implemented yet");
+  const user = await db.user.findUniqueOrThrow({ where: { id: input.userId } });
+  await db.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hashPassword(input.newPassword), mustChangePassword: false },
+  });
+  // NFR-04: the other sessions end now; the one that made the change stays.
+  await db.session.updateMany({
+    where: {
+      userId: user.id,
+      revokedAt: null,
+      tokenHash: { not: hashSessionToken(input.token) },
+    },
+    data: { revokedAt: input.now },
+  });
+  // It never stores the password (RI-14).
+  await db.auditEvent.create({
+    data: {
+      action: "PASSWORD_CHANGED",
+      userId: user.id,
+      entity: "usuario",
+      entityId: user.id,
+      ip: input.ip,
+      occurredAt: input.now,
+    },
+  });
+  return { ok: true };
 }
