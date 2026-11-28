@@ -122,3 +122,32 @@ describe("changeOwnPassword (US-05, RI-16)", () => {
     });
   });
 });
+
+describe("changeOwnPassword rejects, and changes nothing,", () => {
+  it.each([
+    ["a wrong current password", { currentPassword: `${CURRENT_PASSWORD}!` }, "wrongPassword"],
+    [
+      "a new password shorter than 15 characters",
+      { newPassword: "a".repeat(14) },
+      "passwordLength",
+    ],
+    ["a new password longer than 64 characters", { newPassword: "a".repeat(65) }, "passwordLength"],
+    // RI-16: whoever assigned it would still know it.
+    ["a new password equal to the current one", { newPassword: CURRENT_PASSWORD }, "samePassword"],
+  ])("%s", async (_case, change, reason) => {
+    await asApp(async (db) => {
+      const user = await account(db);
+      const elsewhere = await openSession(db, user.id, "hash-de-otra-sesion-abierta");
+      const eventsBefore = await db.auditEvent.count();
+
+      const result = await changeOwnPassword(db, { ...input(user.id), ...change });
+
+      expect(result).toEqual({ ok: false, reason });
+      expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toEqual(user);
+      expect(
+        (await db.session.findUniqueOrThrow({ where: { id: elsewhere.id } })).revokedAt,
+      ).toBeNull();
+      expect(await db.auditEvent.count()).toBe(eventsBefore);
+    });
+  });
+});
